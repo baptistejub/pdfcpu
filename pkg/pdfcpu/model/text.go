@@ -213,8 +213,9 @@ func PrepBytes(xRefTable *XRefTable, s, fontName string, cjk, rtl bool) string {
 
 func writeStringToBuf(xRefTable *XRefTable, w io.Writer, s string, x, y float64, td TextDescriptor) {
 	s = PrepBytes(xRefTable, s, td.FontName, false, td.RTL)
-	fmt.Fprintf(w, "BT 0 Tw %.2f %.2f %.2f RG %.2f %.2f %.2f rg %.2f %.2f Td %d Tr (%s) Tj ET ",
-		td.StrokeCol.R, td.StrokeCol.G, td.StrokeCol.B, td.FillCol.R, td.FillCol.G, td.FillCol.B, x, y, td.RMode, s)
+	// Adding "x w" to adjust stroke/outline width
+	fmt.Fprintf(w, "BT 0 Tw %.2f %.2f %.2f RG %.2f %.2f %.2f rg %.2f %.2f Td %d Tr %.2f w (%s) Tj ET ",
+		td.StrokeCol.R, td.StrokeCol.G, td.StrokeCol.B, td.FillCol.R, td.FillCol.G, td.FillCol.B, x, y, td.RMode, td.Scale*0.2, s)
 }
 
 func setFont(w io.Writer, fontID string, fontSize float32) {
