@@ -22,8 +22,15 @@
 # Start from the latest golang base image
 FROM golang:latest AS builder
 
+WORKDIR /go/src/pdfcpu
+
 # install
-RUN go install github.com/pdfcpu/pdfcpu/cmd/pdfcpu@latest
+COPY go.mod .
+COPY go.sum .
+RUN go mod download
+COPY . .
+
+RUN go build -o /go ./cmd/pdfcpu
 
 ######## Start a new stage from scratch #######
 
@@ -34,15 +41,4 @@ RUN apk --no-cache add ca-certificates gcompat
 WORKDIR /root
 
 # Copy the pre-built binary file from the previous stage
-COPY --from=builder /go/bin ./
-
-# Export path of executable
-ENV PATH="${PATH}:/root"
-
-VOLUME /app
-WORKDIR /app
-
-# Entrypoint for container default executable
-ENTRYPOINT ["pdfcpu"]
-
-
+COPY --from=builder /go/pdfcpu .
