@@ -233,6 +233,8 @@ type Configuration struct {
 
 	// PDF Viewer is expected to supply appearance streams for form fields.
 	NeedAppearances bool
+
+	DisableOptimize bool
 }
 
 // ConfigPath defines the location of pdfcpu's configuration directory.
@@ -308,6 +310,7 @@ func newDefaultConfiguration() *Configuration {
 		OptimizeDuplicateContentStreams: false,
 		CreateBookmarks:                 true,
 		NeedAppearances:                 false,
+		DisableOptimize:                 false,
 	}
 }
 
@@ -375,7 +378,8 @@ func (c Configuration) String() string {
 		"DateFormat:		%s\n"+
 		"OptimizeDuplicateContentStreams %t\n"+
 		"CreateBookmarks %t\n"+
-		"NeedAppearances %t\n",
+		"NeedAppearances %t\n"+
+		"DisableOptimize %t\n",
 		path,
 		c.CheckFileNameExt,
 		c.Reader15,
@@ -393,6 +397,7 @@ func (c Configuration) String() string {
 		c.OptimizeDuplicateContentStreams,
 		c.CreateBookmarks,
 		c.NeedAppearances,
+		c.DisableOptimize,
 	)
 }
 

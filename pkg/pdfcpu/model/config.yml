@@ -58,3 +58,5 @@ createBookmarks: true
 
 # Viewer is expected to supply appearance streams for form fields.
 needAppearances: false
+
+disableOptimize: false
