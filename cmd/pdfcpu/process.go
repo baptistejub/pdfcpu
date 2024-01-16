@@ -763,7 +763,7 @@ func validateEncryptModeFlag() {
 
 func validateEncryptFlags() {
 	validateEncryptModeFlag()
-	if perm != "none" && perm != "print" && perm != "all" && perm != "" {
+	if perm != "" && perm != "none" && perm != "print" && perm != "all" && !isBinary(perm) && !isHex(perm) {
 		fmt.Fprintf(os.Stderr, "%s\n\n", "supported permissions: none,print,all default:none (viewing always allowed!)")
 		os.Exit(1)
 	}
@@ -773,8 +773,7 @@ func processEncryptCommand(conf *model.Configuration) {
 	if perm != "" {
 		perm = permCompletion(perm)
 	}
-	if len(flag.Args()) == 0 || len(flag.Args()) > 2 ||
-		!(perm == "none" || perm == "print" || perm == "all") {
+	if len(flag.Args()) == 0 || len(flag.Args()) > 2 {
 		fmt.Fprintf(os.Stderr, "%s\n\n", usageEncrypt)
 		os.Exit(1)
 	}
@@ -786,22 +785,13 @@ func processEncryptCommand(conf *model.Configuration) {
 	}
 
 	validateEncryptFlags()
-	if perm != "" {
-		perm = permCompletion(perm)
-	}
 
 	conf.EncryptUsingAES = mode != "rc4"
 
 	kl, _ := strconv.Atoi(key)
 	conf.EncryptKeyLength = kl
 
-	if perm == "all" {
-		conf.Permissions = model.PermissionsAll
-	}
-
-	if perm == "print" {
-		conf.Permissions = model.PermissionsPrint
-	}
+	configPerm(perm, conf)
 
 	inFile := flag.Arg(0)
 	if conf.CheckFileNameExt {
