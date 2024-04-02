@@ -25,7 +25,6 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
-	"time"
 
 	"github.com/pdfcpu/pdfcpu/pkg/log"
 	"github.com/pdfcpu/pdfcpu/pkg/pdfcpu/create"
@@ -53,12 +52,8 @@ func FormFields(rs io.ReadSeeker, conf *model.Configuration) ([]form.Field, erro
 	}
 	conf.Cmd = model.LISTFORMFIELDS
 
-	ctx, _, _, _, err := ReadValidateAndOptimize(rs, conf, time.Now())
+	ctx, err := ReadValidateAndOptimize(rs, conf)
 	if err != nil {
-		return nil, err
-	}
-
-	if err := ctx.EnsurePageCount(); err != nil {
 		return nil, err
 	}
 
@@ -78,12 +73,8 @@ func RemoveFormFields(rs io.ReadSeeker, w io.Writer, fieldIDsOrNames []string, c
 	}
 	conf.Cmd = model.REMOVEFORMFIELDS
 
-	ctx, _, _, _, err := ReadValidateAndOptimize(rs, conf, time.Now())
+	ctx, err := ReadValidateAndOptimize(rs, conf)
 	if err != nil {
-		return err
-	}
-
-	if err := ctx.EnsurePageCount(); err != nil {
 		return err
 	}
 
@@ -95,13 +86,7 @@ func RemoveFormFields(rs io.ReadSeeker, w io.Writer, fieldIDsOrNames []string, c
 		return ErrNoFormFieldsAffected
 	}
 
-	if conf.ValidationMode != model.ValidationNone {
-		if err = ValidateContext(ctx); err != nil {
-			return err
-		}
-	}
-
-	return WriteContext(ctx, w)
+	return Write(ctx, w, conf)
 }
 
 // RemoveFormFieldsFile deletes form fields in inFile and writes the result to outFile.
@@ -155,12 +140,8 @@ func LockFormFields(rs io.ReadSeeker, w io.Writer, fieldIDsOrNames []string, con
 	}
 	conf.Cmd = model.LOCKFORMFIELDS
 
-	ctx, _, _, _, err := ReadValidateAndOptimize(rs, conf, time.Now())
+	ctx, err := ReadValidateAndOptimize(rs, conf)
 	if err != nil {
-		return err
-	}
-
-	if err := ctx.EnsurePageCount(); err != nil {
 		return err
 	}
 
@@ -172,13 +153,7 @@ func LockFormFields(rs io.ReadSeeker, w io.Writer, fieldIDsOrNames []string, con
 		return ErrNoFormFieldsAffected
 	}
 
-	if conf.ValidationMode != model.ValidationNone {
-		if err = ValidateContext(ctx); err != nil {
-			return err
-		}
-	}
-
-	return WriteContext(ctx, w)
+	return Write(ctx, w, conf)
 }
 
 // LockFormFieldsFile turns form fields of inFile into read-only and writes the result to outFile.
@@ -232,12 +207,8 @@ func UnlockFormFields(rs io.ReadSeeker, w io.Writer, fieldIDsOrNames []string, c
 	}
 	conf.Cmd = model.UNLOCKFORMFIELDS
 
-	ctx, _, _, _, err := ReadValidateAndOptimize(rs, conf, time.Now())
+	ctx, err := ReadValidateAndOptimize(rs, conf)
 	if err != nil {
-		return err
-	}
-
-	if err := ctx.EnsurePageCount(); err != nil {
 		return err
 	}
 
@@ -249,13 +220,7 @@ func UnlockFormFields(rs io.ReadSeeker, w io.Writer, fieldIDsOrNames []string, c
 		return ErrNoFormFieldsAffected
 	}
 
-	if conf.ValidationMode != model.ValidationNone {
-		if err = ValidateContext(ctx); err != nil {
-			return err
-		}
-	}
-
-	return WriteContext(ctx, w)
+	return Write(ctx, w, conf)
 }
 
 // UnlockFormFieldsFile makes form fields of inFile writeable and writes the result to outFile.
@@ -309,12 +274,8 @@ func ResetFormFields(rs io.ReadSeeker, w io.Writer, fieldIDsOrNames []string, co
 	}
 	conf.Cmd = model.RESETFORMFIELDS
 
-	ctx, _, _, _, err := ReadValidateAndOptimize(rs, conf, time.Now())
+	ctx, err := ReadValidateAndOptimize(rs, conf)
 	if err != nil {
-		return err
-	}
-
-	if err := ctx.EnsurePageCount(); err != nil {
 		return err
 	}
 
@@ -326,13 +287,7 @@ func ResetFormFields(rs io.ReadSeeker, w io.Writer, fieldIDsOrNames []string, co
 		return ErrNoFormFieldsAffected
 	}
 
-	if conf.ValidationMode != model.ValidationNone {
-		if err = ValidateContext(ctx); err != nil {
-			return err
-		}
-	}
-
-	return WriteContext(ctx, w)
+	return Write(ctx, w, conf)
 }
 
 // ResetFormFieldsFile resets form fields of inFile and writes the result to outFile.
@@ -386,12 +341,8 @@ func ExportForm(rs io.ReadSeeker, source string, conf *model.Configuration) (*fo
 	}
 	conf.Cmd = model.EXPORTFORMFIELDS
 
-	ctx, _, _, _, err := ReadValidateAndOptimize(rs, conf, time.Now())
+	ctx, err := ReadValidateAndOptimize(rs, conf)
 	if err != nil {
-		return nil, err
-	}
-
-	if err := ctx.EnsurePageCount(); err != nil {
 		return nil, err
 	}
 
@@ -421,12 +372,8 @@ func ExportFormJSON(rs io.ReadSeeker, w io.Writer, source string, conf *model.Co
 	}
 	conf.Cmd = model.EXPORTFORMFIELDS
 
-	ctx, _, _, _, err := ReadValidateAndOptimize(rs, conf, time.Now())
+	ctx, err := ReadValidateAndOptimize(rs, conf)
 	if err != nil {
-		return err
-	}
-
-	if err := ctx.EnsurePageCount(); err != nil {
 		return err
 	}
 
@@ -532,16 +479,12 @@ func validateOptionValues(f form.Form) error {
 	return nil
 }
 
-func fillPostProc(ctx *model.Context, pp []*model.Page, conf *model.Configuration) error {
+func fillPostProc(ctx *model.Context, pp []*model.Page) error {
 	if _, _, err := create.UpdatePageTree(ctx, pp, nil); err != nil {
 		return err
 	}
 
-	if conf.ValidationMode != model.ValidationNone {
-		return ValidateContext(ctx)
-	}
-
-	return nil
+	return ValidateContext(ctx)
 }
 
 // FillForm populates the form rs with data from rd and writes the result to w.
@@ -559,16 +502,12 @@ func FillForm(rs io.ReadSeeker, rd io.Reader, w io.Writer, conf *model.Configura
 	}
 	conf.Cmd = model.FILLFORMFIELDS
 
-	ctx, _, _, _, err := ReadValidateAndOptimize(rs, conf, time.Now())
+	ctx, err := ReadValidateAndOptimize(rs, conf)
 	if err != nil {
 		return err
 	}
 
 	ctx.RemoveSignature()
-
-	if err := ctx.EnsurePageCount(); err != nil {
-		return err
-	}
 
 	var buf bytes.Buffer
 	if _, err := io.Copy(&buf, rd); err != nil {
@@ -609,11 +548,11 @@ func FillForm(rs io.ReadSeeker, rd io.Reader, w io.Writer, conf *model.Configura
 		return ErrNoFormFieldsAffected
 	}
 
-	if err := fillPostProc(ctx, pp, conf); err != nil {
+	if err := fillPostProc(ctx, pp); err != nil {
 		return err
 	}
 
-	return WriteContext(ctx, w)
+	return Write(ctx, w, conf)
 }
 
 // FillFormFile populates the form inFilePDF with data from inFileJSON and writes the result to outFilePDF.
@@ -724,12 +663,8 @@ func multiFillFormJSON(inFilePDF string, rd io.Reader, outDir, fileName string, 
 		}
 		defer rs.Close()
 
-		ctx, _, _, _, err := ReadValidateAndOptimize(rs, conf, time.Now())
+		ctx, err := ReadValidateAndOptimize(rs, conf)
 		if err != nil {
-			return err
-		}
-
-		if err := ctx.EnsurePageCount(); err != nil {
 			return err
 		}
 
@@ -745,7 +680,7 @@ func multiFillFormJSON(inFilePDF string, rd io.Reader, outDir, fileName string, 
 			return err
 		}
 
-		if conf.ValidationMode != model.ValidationNone {
+		if conf.PostProcessValidate {
 			if err = ValidateContext(ctx); err != nil {
 				return err
 			}
@@ -818,12 +753,8 @@ func multiFillFormCSV(inFilePDF string, rd io.Reader, outDir, fileName string, m
 		}
 		defer f.Close()
 
-		ctx, _, _, _, err := ReadValidateAndOptimize(f, conf, time.Now())
+		ctx, err := ReadValidateAndOptimize(f, conf)
 		if err != nil {
-			return err
-		}
-
-		if err := ctx.EnsurePageCount(); err != nil {
 			return err
 		}
 
@@ -844,7 +775,7 @@ func multiFillFormCSV(inFilePDF string, rd io.Reader, outDir, fileName string, m
 			return err
 		}
 
-		if conf.ValidationMode != model.ValidationNone {
+		if conf.PostProcessValidate {
 			if err = ValidateContext(ctx); err != nil {
 				return err
 			}

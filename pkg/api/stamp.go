@@ -19,9 +19,7 @@ package api
 import (
 	"io"
 	"os"
-	"time"
 
-	"github.com/pdfcpu/pdfcpu/pkg/log"
 	"github.com/pdfcpu/pdfcpu/pkg/pdfcpu"
 	"github.com/pdfcpu/pdfcpu/pkg/pdfcpu/model"
 	"github.com/pdfcpu/pdfcpu/pkg/pdfcpu/types"
@@ -48,40 +46,16 @@ func AddWatermarksMap(rs io.ReadSeeker, w io.Writer, m map[int]*model.Watermark,
 		return errors.New("pdfcpu: missing watermarks")
 	}
 
-	fromStart := time.Now()
-	ctx, durRead, durVal, durOpt, err := ReadValidateAndOptimize(rs, conf, fromStart)
+	ctx, err := ReadValidateAndOptimize(rs, conf)
 	if err != nil {
 		return err
 	}
-
-	from := time.Now()
 
 	if err = pdfcpu.AddWatermarksMap(ctx, m); err != nil {
 		return err
 	}
 
-	if log.StatsEnabled() {
-		log.Stats.Printf("XRefTable:\n%s\n", ctx)
-	}
-
-	if conf.ValidationMode != model.ValidationNone {
-		if err = ValidateContext(ctx); err != nil {
-			return err
-		}
-	}
-
-	durStamp := time.Since(from).Seconds()
-	fromWrite := time.Now()
-
-	if err = WriteContext(ctx, w); err != nil {
-		return err
-	}
-
-	durWrite := durStamp + time.Since(fromWrite).Seconds()
-	durTotal := time.Since(fromStart).Seconds()
-	logOperationStats(ctx, "watermark, write", durRead, durVal, durOpt, durWrite, durTotal)
-
-	return nil
+	return Write(ctx, w, conf)
 }
 
 // AddWatermarksMapFile adds watermarks to corresponding pages in m of inFile and writes the result to outFile.
@@ -140,40 +114,16 @@ func AddWatermarksSliceMap(rs io.ReadSeeker, w io.Writer, m map[int][]*model.Wat
 		return errors.New("pdfcpu: missing watermarks")
 	}
 
-	fromStart := time.Now()
-	ctx, durRead, durVal, durOpt, err := ReadValidateAndOptimize(rs, conf, fromStart)
+	ctx, err := ReadValidateAndOptimize(rs, conf)
 	if err != nil {
 		return err
 	}
-
-	from := time.Now()
 
 	if err = pdfcpu.AddWatermarksSliceMap(ctx, m); err != nil {
 		return err
 	}
 
-	if log.StatsEnabled() {
-		log.Stats.Printf("XRefTable:\n%s\n", ctx)
-	}
-
-	if conf.ValidationMode != model.ValidationNone {
-		if err = ValidateContext(ctx); err != nil {
-			return err
-		}
-	}
-
-	durStamp := time.Since(from).Seconds()
-	fromWrite := time.Now()
-
-	if err = WriteContext(ctx, w); err != nil {
-		return err
-	}
-
-	durWrite := durStamp + time.Since(fromWrite).Seconds()
-	durTotal := time.Since(fromStart).Seconds()
-	logOperationStats(ctx, "watermark, write", durRead, durVal, durOpt, durWrite, durTotal)
-
-	return nil
+	return Write(ctx, w, conf)
 }
 
 // AddWatermarksSliceMapFile adds watermarks to corresponding pages in m of inFile and writes the result to outFile.
@@ -233,17 +183,11 @@ func AddWatermarks(rs io.ReadSeeker, w io.Writer, selectedPages []string, wm *mo
 		return errors.New("pdfcpu: missing watermark configuration")
 	}
 
-	fromStart := time.Now()
-	ctx, durRead, durVal, durOpt, err := ReadValidateAndOptimize(rs, conf, fromStart)
+	ctx, err := ReadValidateAndOptimize(rs, conf)
 	if err != nil {
 		return err
 	}
 
-	if err := ctx.EnsurePageCount(); err != nil {
-		return err
-	}
-
-	from := time.Now()
 	var pages types.IntSet
 	pages, err = PagesForPageSelection(ctx.PageCount, selectedPages, true, true)
 	if err != nil {
@@ -254,28 +198,7 @@ func AddWatermarks(rs io.ReadSeeker, w io.Writer, selectedPages []string, wm *mo
 		return err
 	}
 
-	if log.StatsEnabled() {
-		log.Stats.Printf("XRefTable:\n%s\n", ctx)
-	}
-
-	if conf.ValidationMode != model.ValidationNone {
-		if err = ValidateContext(ctx); err != nil {
-			return err
-		}
-	}
-
-	durStamp := time.Since(from).Seconds()
-	fromWrite := time.Now()
-
-	if err = WriteContext(ctx, w); err != nil {
-		return err
-	}
-
-	durWrite := durStamp + time.Since(fromWrite).Seconds()
-	durTotal := time.Since(fromStart).Seconds()
-	logOperationStats(ctx, "watermark, write", durRead, durVal, durOpt, durWrite, durTotal)
-
-	return nil
+	return Write(ctx, w, conf)
 }
 
 // AddWatermarksFile adds watermarks to all selected pages of inFile and writes the result to outFile.
@@ -330,17 +253,11 @@ func RemoveWatermarks(rs io.ReadSeeker, w io.Writer, selectedPages []string, con
 	}
 	conf.Cmd = model.REMOVEWATERMARKS
 
-	fromStart := time.Now()
-	ctx, durRead, durVal, durOpt, err := ReadValidateAndOptimize(rs, conf, fromStart)
+	ctx, err := ReadValidateAndOptimize(rs, conf)
 	if err != nil {
 		return err
 	}
 
-	if err := ctx.EnsurePageCount(); err != nil {
-		return err
-	}
-
-	from := time.Now()
 	pages, err := PagesForPageSelection(ctx.PageCount, selectedPages, true, true)
 	if err != nil {
 		return err
@@ -350,28 +267,7 @@ func RemoveWatermarks(rs io.ReadSeeker, w io.Writer, selectedPages []string, con
 		return err
 	}
 
-	if log.StatsEnabled() {
-		log.Stats.Printf("XRefTable:\n%s\n", ctx)
-	}
-
-	if conf.ValidationMode != model.ValidationNone {
-		if err = ValidateContext(ctx); err != nil {
-			return err
-		}
-	}
-
-	durStamp := time.Since(from).Seconds()
-	fromWrite := time.Now()
-
-	if err = WriteContext(ctx, w); err != nil {
-		return err
-	}
-
-	durWrite := durStamp + time.Since(fromWrite).Seconds()
-	durTotal := time.Since(fromStart).Seconds()
-	logOperationStats(ctx, "watermark, write", durRead, durVal, durOpt, durWrite, durTotal)
-
-	return nil
+	return Write(ctx, w, conf)
 }
 
 // RemoveWatermarksFile removes watermarks from all selected pages of inFile and writes the result to outFile.

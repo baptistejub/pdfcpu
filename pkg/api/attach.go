@@ -21,7 +21,6 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
-	"time"
 
 	"github.com/pdfcpu/pdfcpu/pkg/log"
 	"github.com/pdfcpu/pdfcpu/pkg/pdfcpu/model"
@@ -39,8 +38,7 @@ func Attachments(rs io.ReadSeeker, conf *model.Configuration) ([]model.Attachmen
 	}
 	conf.Cmd = model.LISTATTACHMENTS
 
-	fromStart := time.Now()
-	ctx, _, _, _, err := ReadValidateAndOptimize(rs, conf, fromStart)
+	ctx, err := ReadValidateAndOptimize(rs, conf)
 	if err != nil {
 		return nil, err
 	}
@@ -64,13 +62,11 @@ func AddAttachments(rs io.ReadSeeker, w io.Writer, files []string, coll bool, co
 	}
 	conf.Cmd = model.ADDATTACHMENTS
 
-	fromStart := time.Now()
-	ctx, durRead, durVal, durOpt, err := ReadValidateAndOptimize(rs, conf, fromStart)
+	ctx, err := ReadValidateAndOptimize(rs, conf)
 	if err != nil {
 		return err
 	}
 
-	from := time.Now()
 	var ok bool
 
 	for _, fn := range files {
@@ -111,18 +107,7 @@ func AddAttachments(rs io.ReadSeeker, w io.Writer, files []string, coll bool, co
 		return errors.New("pdfcpu: AddAttachments: No attachment added")
 	}
 
-	durAdd := time.Since(from).Seconds()
-	fromWrite := time.Now()
-
-	if err = WriteContext(ctx, w); err != nil {
-		return err
-	}
-
-	durWrite := durAdd + time.Since(fromWrite).Seconds()
-	durTotal := time.Since(fromStart).Seconds()
-	logOperationStats(ctx, "add attachment, write", durRead, durVal, durOpt, durWrite, durTotal)
-
-	return nil
+	return Write(ctx, w, conf)
 }
 
 // AddAttachmentsFile embeds files into a PDF context read from inFile and writes the result to outFile.
@@ -178,13 +163,10 @@ func RemoveAttachments(rs io.ReadSeeker, w io.Writer, files []string, conf *mode
 	}
 	conf.Cmd = model.ADDATTACHMENTS
 
-	fromStart := time.Now()
-	ctx, durRead, durVal, durOpt, err := ReadValidateAndOptimize(rs, conf, fromStart)
+	ctx, err := ReadValidateAndOptimize(rs, conf)
 	if err != nil {
 		return err
 	}
-
-	from := time.Now()
 
 	var ok bool
 	if ok, err = ctx.RemoveAttachments(files); err != nil {
@@ -194,17 +176,7 @@ func RemoveAttachments(rs io.ReadSeeker, w io.Writer, files []string, conf *mode
 		return errors.New("pdfcpu: RemoveAttachments: No attachment removed")
 	}
 
-	durRemove := time.Since(from).Seconds()
-	fromWrite := time.Now()
-	if err = WriteContext(ctx, w); err != nil {
-		return err
-	}
-
-	durWrite := durRemove + time.Since(fromWrite).Seconds()
-	durTotal := time.Since(fromStart).Seconds()
-	logOperationStats(ctx, "remove att, write", durRead, durVal, durOpt, durWrite, durTotal)
-
-	return nil
+	return Write(ctx, w, conf)
 }
 
 // RemoveAttachmentsFile deletes embedded files from a PDF context read from inFile and writes the result to outFile.
@@ -256,7 +228,7 @@ func ExtractAttachmentsRaw(rs io.ReadSeeker, outDir string, fileNames []string, 
 	}
 	conf.Cmd = model.EXTRACTATTACHMENTS
 
-	ctx, _, _, _, err := ReadValidateAndOptimize(rs, conf, time.Now())
+	ctx, err := ReadAndValidate(rs, conf)
 	if err != nil {
 		return nil, err
 	}

@@ -889,16 +889,21 @@ func (xRefTable *XRefTable) UndeleteObject(objectNumber int) error {
 	return nil
 }
 
-// IsValid returns true if the object referenced by ir has already been validated.
-func (xRefTable *XRefTable) IsValid(ir types.IndirectRef) (bool, error) {
-	entry, found := xRefTable.FindTableEntry(ir.ObjectNumber.Value(), ir.GenerationNumber.Value())
+// IsValidObj returns true if the object with objNr and genNr is valid.
+func (xRefTable *XRefTable) IsValidObj(objNr, genNr int) (bool, error) {
+	entry, found := xRefTable.FindTableEntry(objNr, genNr)
 	if !found {
-		return false, errors.Errorf("pdfcpu: IsValid: no entry for obj#%d\n", ir.ObjectNumber.Value())
+		return false, errors.Errorf("pdfcpu: IsValid: no entry for obj#%d\n", objNr)
 	}
 	if entry.Free {
-		return false, errors.Errorf("pdfcpu: IsValid: unexpected free entry for obj#%d\n", ir.ObjectNumber.Value())
+		return false, errors.Errorf("pdfcpu: IsValid: unexpected free entry for obj#%d\n", objNr)
 	}
 	return entry.Valid, nil
+}
+
+// IsValid returns true if the object referenced by ir is valid.
+func (xRefTable *XRefTable) IsValid(ir types.IndirectRef) (bool, error) {
+	return xRefTable.IsValidObj(ir.ObjectNumber.Value(), ir.GenerationNumber.Value())
 }
 
 // SetValid marks the xreftable entry of the object referenced by ir as valid.
@@ -1825,7 +1830,7 @@ func consolidateResourceDict(d types.Dict, prn PageResourceNames, pageNr int) er
 	return nil
 }
 
-func consolidateResources(consolidateRes bool, xRefTable *XRefTable, pageDict, resDict types.Dict, page int) error {
+func (xRefTable *XRefTable) consolidateResourcesWithContent(pageDict, resDict types.Dict, page int, consolidateRes bool) error {
 	if !consolidateRes {
 		return nil
 	}
@@ -1875,10 +1880,9 @@ func (xRefTable *XRefTable) processPageTreeForPageDict(root *types.IndirectRef, 
 		return nil, nil, err
 	}
 
-	// Iterate over page tree.
 	kids := d.ArrayEntry("Kids")
 	if kids == nil {
-		return d, root, consolidateResources(consolidateRes, xRefTable, d, pAttrs.Resources, page)
+		return d, root, xRefTable.consolidateResourcesWithContent(d, pAttrs.Resources, page, consolidateRes)
 	}
 
 	for _, o := range kids {
@@ -2034,7 +2038,6 @@ func (xRefTable *XRefTable) PageNumber(pageObjNr int) (int, error) {
 }
 
 // EnsurePageCount evaluates the page count for xRefTable if necessary.
-// Important when validation is turned off.
 func (xRefTable *XRefTable) EnsurePageCount() error {
 	if xRefTable.PageCount > 0 {
 		return nil
@@ -2087,7 +2090,6 @@ func (xRefTable *XRefTable) collectPageBoundariesForPage(d types.Dict, pb []Page
 		return errors.New("pdfcpu: collectMediaBoxesForPageTree: mediaBox is nil")
 	}
 
-	//if inhCropBox != nil && inhCropBox.Rectangle != nil {
 	if inhCropBox != nil {
 		pb[p].Crop = &Box{Rect: inhCropBox, Inherited: true}
 	}
@@ -2241,59 +2243,15 @@ func (xRefTable *XRefTable) collectPageBoundariesForPageTree(
 		return errors.New("pdfcpu: validatePagesDict: corrupt \"Kids\" entry")
 	}
 
-	if err := xRefTable.collectPageBoundariesForPageTreeKids(kids, inhMediaBox, inhCropBox, pb, r, p, selectedPages); err != nil {
-		return err
-	}
-
-	// // Iterate over page tree.
-	// for _, o := range kids {
-
-	// 	if o == nil {
-	// 		continue
-	// 	}
-
-	// 	// Dereference next page node dict.
-	// 	ir, ok := o.(types.IndirectRef)
-	// 	if !ok {
-	// 		return errors.Errorf("pdfcpu: collectMediaBoxesForPageTree: corrupt page node dict")
-	// 	}
-
-	// 	pageNodeDict, err := xRefTable.DereferenceDict(ir)
-	// 	if err != nil {
-	// 		return err
-	// 	}
-
-	// 	switch *pageNodeDict.Type() {
-
-	// 	case "Pages":
-	// 		if err = xRefTable.collectPageBoundariesForPageTree(&ir, inhMediaBox, inhCropBox, pb, r, p, selectedPages); err != nil {
-	// 			return err
-	// 		}
-
-	// 	case "Page":
-	// 		collect := len(selectedPages) == 0
-	// 		if !collect {
-	// 			_, collect = selectedPages[(*p)+1]
-	// 		}
-	// 		if collect {
-	// 			if err = xRefTable.collectPageBoundariesForPageTree(&ir, inhMediaBox, inhCropBox, pb, r, p, selectedPages); err != nil {
-	// 				return err
-	// 			}
-	// 		}
-	// 		*p++
-	// 	}
-
-	// }
-
-	return nil
+	return xRefTable.collectPageBoundariesForPageTreeKids(kids, inhMediaBox, inhCropBox, pb, r, p, selectedPages)
 }
 
 // PageBoundaries returns a sorted slice with page boundaries
 // for all pages sorted ascending by page number.
 func (xRefTable *XRefTable) PageBoundaries(selectedPages types.IntSet) ([]PageBoundaries, error) {
-	if err := xRefTable.EnsurePageCount(); err != nil {
-		return nil, err
-	}
+	// if err := xRefTable.EnsurePageCount(); err != nil {
+	// 	return nil, err
+	// }
 
 	// Get an indirect reference to the page tree root dict.
 	root, err := xRefTable.Pages()
@@ -2444,6 +2402,7 @@ func (xRefTable *XRefTable) insertBlankPages(parent *types.IndirectRef, pAttrs *
 				}
 				a = append(a, *indRef)
 				i++
+				xRefTable.SetValid(*indRef)
 			}
 			if before {
 				a = append(a, ir)
@@ -2736,7 +2695,10 @@ func (xRefTable *XRefTable) RemoveSignature() {
 		d2 := xRefTable.Form
 		delete(d2, "SigFlags")
 		delete(d2, "XFA")
-		//delete(d2, "NeedAppearances") deprecated in PDF 2.0
+		if xRefTable.Version() == V20 {
+			// deprecated in PDF 2.0
+			delete(d2, "NeedAppearances")
+		}
 		d1["AcroForm"] = d2
 		delete(d1, "Extensions")
 	}

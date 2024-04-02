@@ -24,6 +24,8 @@ import (
 	"github.com/pkg/errors"
 )
 
+var errInvalidPageAnnotArray = errors.New("pdfcpu: validatePageAnnotations: page annotation array without indirect references.")
+
 func validateAAPLAKExtrasDictEntry(xRefTable *model.XRefTable, d types.Dict, dictName, entryName string, required bool, sinceVersion model.Version) error {
 
 	// No documentation for this PDF-Extension - purely speculative implementation.
@@ -374,9 +376,17 @@ func validateAnnotationDictLink(xRefTable *model.XRefTable, d types.Dict, dictNa
 func validateAnnotationDictFreeTextPart1(xRefTable *model.XRefTable, d types.Dict, dictName string) error {
 
 	// DA, required, string
-	_, err := validateStringEntry(xRefTable, d, dictName, "DA", REQUIRED, model.V10, nil)
+	validate := validateDA
+	if xRefTable.ValidationMode == model.ValidationRelaxed {
+		validate = validateDARelaxed
+	}
+	da, err := validateStringEntry(xRefTable, d, dictName, "DA", REQUIRED, model.V10, validate)
 	if err != nil {
 		return err
+	}
+	if xRefTable.ValidationMode == model.ValidationRelaxed && da != nil {
+		// Repair
+		d["DA"] = types.StringLiteral(*da)
 	}
 
 	// Q, optional, integer, since V1.4, 0,1,2
@@ -400,7 +410,11 @@ func validateAnnotationDictFreeTextPart1(xRefTable *model.XRefTable, d types.Dic
 	}
 
 	// DS, optional, text string, since V1.5
-	_, err = validateStringEntry(xRefTable, d, dictName, "DS", OPTIONAL, model.V15, nil)
+	sinceVersion = model.V15
+	if xRefTable.ValidationMode == model.ValidationRelaxed {
+		sinceVersion = model.V14
+	}
+	_, err = validateStringEntry(xRefTable, d, dictName, "DS", OPTIONAL, sinceVersion, nil)
 	if err != nil {
 		return err
 	}
@@ -1175,9 +1189,17 @@ func validateAnnotationDictRedact(xRefTable *model.XRefTable, d types.Dict, dict
 	}
 
 	// DA, required, byte string
-	_, err = validateStringEntry(xRefTable, d, dictName, "DA", REQUIRED, model.V10, nil)
+	validate := validateDA
+	if xRefTable.ValidationMode == model.ValidationRelaxed {
+		validate = validateDARelaxed
+	}
+	da, err := validateStringEntry(xRefTable, d, dictName, "DA", REQUIRED, model.V10, validate)
 	if err != nil {
 		return err
+	}
+	if xRefTable.ValidationMode == model.ValidationRelaxed && da != nil {
+		// Repair
+		d["DA"] = types.StringLiteral(*da)
 	}
 
 	// Q, optional, integer
@@ -1393,27 +1415,96 @@ func validateBorderArray(xRefTable *model.XRefTable, a types.Array) bool {
 	if len(a) == 0 {
 		return true
 	}
-	if len(a) == 1 || len(a) == 2 || len(a) > 4 {
-		return false
-	}
-	if len(a) == 3 {
-		_, err := validateNumberArray(xRefTable, a)
-		return err == nil
+
+	if xRefTable.Version() == model.V10 {
+		return len(a) == 3
 	}
 
-	// len = 4
-
-	o := a[3]
-	a1, ok := o.(types.Array)
-	if !ok {
-		return xRefTable.ValidationMode == model.ValidationRelaxed
-	}
-	if len(a1) != 2 {
+	if !(len(a) == 3 || len(a) == 4) {
 		return false
 	}
 
-	_, err := validateNumberArray(xRefTable, a1)
-	return err == nil
+	for i := 0; i < len(a); i++ {
+
+		if i == 3 {
+			// validate dash pattern array
+			// len must be 0,1,2,3 numbers (dont'allow only 0s)
+			a1, ok := a[i].(types.Array)
+			if !ok {
+				return xRefTable.ValidationMode == model.ValidationRelaxed
+			}
+
+			if len(a1) == 0 {
+				return true
+			}
+
+			if len(a1) > 3 {
+				return false
+			}
+
+			all0 := true
+			for j := 0; j < len(a1); j++ {
+				o, err := xRefTable.Dereference(a1[j])
+				if err != nil || o == nil {
+					return false
+				}
+
+				var f float64
+
+				switch o := o.(type) {
+				case types.Integer:
+					f = float64(o.Value())
+				case types.Float:
+					f = o.Value()
+				default:
+					return false
+				}
+
+				if f < 0 {
+					return false
+				}
+
+				if f != 0 {
+					all0 = false
+					break
+				}
+
+			}
+
+			if all0 {
+				if xRefTable.ValidationMode != model.ValidationRelaxed {
+					return false
+				}
+				if log.ValidateEnabled() {
+					log.Validate.Println("digesting invalid dash pattern array: %s", a1)
+				}
+			}
+
+			continue
+		}
+
+		o, err := xRefTable.Dereference(a[i])
+		if err != nil || o == nil {
+			return false
+		}
+
+		var f float64
+
+		switch o := o.(type) {
+		case types.Integer:
+			f = float64(o.Value())
+		case types.Float:
+			f = o.Value()
+		default:
+			return false
+		}
+
+		if f < 0 {
+			return false
+		}
+	}
+
+	return true
 }
 
 func validateAnnotationDictGeneralPart1(xRefTable *model.XRefTable, d types.Dict, dictName string) (*types.Name, error) {
@@ -1482,21 +1573,24 @@ func validateAnnotationDictGeneralPart2(xRefTable *model.XRefTable, d types.Dict
 	}
 
 	// Border, optional, array of numbers
-	a, err := validateArrayEntry(xRefTable, d, dictName, "Border", OPTIONAL, model.V10, nil)
-	if err != nil {
-		return err
-	}
-	if !validateBorderArray(xRefTable, a) {
-		return errors.Errorf("invalid border array: %s", a)
+	obj, found := d.Find("BS")
+	if !found || obj == nil || xRefTable.Version() < model.V12 {
+		a, err := validateArrayEntry(xRefTable, d, dictName, "Border", OPTIONAL, model.V10, nil)
+		if err != nil {
+			return err
+		}
+		if !validateBorderArray(xRefTable, a) {
+			return errors.Errorf("invalid border array: %s", a)
+		}
 	}
 
 	// C, optional array, of numbers, since V1.1
-	if _, err = validateNumberArrayEntry(xRefTable, d, dictName, "C", OPTIONAL, model.V11, nil); err != nil {
+	if _, err := validateNumberArrayEntry(xRefTable, d, dictName, "C", OPTIONAL, model.V11, nil); err != nil {
 		return err
 	}
 
 	// StructParent, optional, integer, since V1.3
-	if _, err = validateIntegerEntry(xRefTable, d, dictName, "StructParent", OPTIONAL, model.V13, nil); err != nil {
+	if _, err := validateIntegerEntry(xRefTable, d, dictName, "StructParent", OPTIONAL, model.V13, nil); err != nil {
 		return err
 	}
 
@@ -1650,10 +1744,16 @@ func validatePageAnnotations(xRefTable *model.XRefTable, d types.Dict) error {
 				return err
 			}
 			if annotsDict == nil {
-				return errors.New("pdfcpu: validatePageAnnotations: corrupted annotation dict")
+				continue
 			}
+		} else if xRefTable.ValidationMode != model.ValidationRelaxed {
+			return errInvalidPageAnnotArray
 		} else if annotsDict, ok = v.(types.Dict); !ok {
-			return errors.New("pdfcpu: validatePageAnnotations: corrupted array of indrefs")
+			return errInvalidPageAnnotArray
+		} else {
+			if log.ValidateEnabled() {
+				log.Validate.Println("digesting page annotation array w/o indirect references")
+			}
 		}
 
 		hasTrapNet, err = validateAnnotationDict(xRefTable, annotsDict)

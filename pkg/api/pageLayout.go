@@ -19,9 +19,7 @@ package api
 import (
 	"io"
 	"os"
-	"time"
 
-	"github.com/pdfcpu/pdfcpu/pkg/pdfcpu"
 	"github.com/pdfcpu/pdfcpu/pkg/pdfcpu/model"
 	"github.com/pdfcpu/pdfcpu/pkg/pdfcpu/types"
 	"github.com/pkg/errors"
@@ -40,7 +38,7 @@ func PageLayout(rs io.ReadSeeker, conf *model.Configuration) (*model.PageLayout,
 	}
 	conf.Cmd = model.LISTPAGELAYOUT
 
-	ctx, _, _, err := readAndValidate(rs, conf, time.Now())
+	ctx, err := ReadAndValidate(rs, conf)
 	if err != nil {
 		return nil, err
 	}
@@ -72,7 +70,7 @@ func ListPageLayout(rs io.ReadSeeker, conf *model.Configuration) ([]string, erro
 	}
 	conf.Cmd = model.LISTPAGELAYOUT
 
-	ctx, _, _, err := readAndValidate(rs, conf, time.Now())
+	ctx, err := ReadAndValidate(rs, conf)
 	if err != nil {
 		return nil, err
 	}
@@ -108,22 +106,14 @@ func SetPageLayout(rs io.ReadSeeker, w io.Writer, val model.PageLayout, conf *mo
 	}
 	conf.Cmd = model.SETPAGELAYOUT
 
-	ctx, _, _, err := readAndValidate(rs, conf, time.Now())
+	ctx, err := ReadAndValidate(rs, conf)
 	if err != nil {
 		return err
 	}
 
-	if ctx.Version() == model.V20 {
-		return pdfcpu.ErrUnsupportedVersion
-	}
-
 	ctx.RootDict["PageLayout"] = types.Name(val.String())
 
-	if err = WriteContext(ctx, w); err != nil {
-		return err
-	}
-
-	return nil
+	return Write(ctx, w, conf)
 }
 
 // SetPageLayoutFile sets inFile's page layout and writes the result to outFile.
@@ -177,22 +167,14 @@ func ResetPageLayout(rs io.ReadSeeker, w io.Writer, conf *model.Configuration) e
 	}
 	conf.Cmd = model.RESETPAGELAYOUT
 
-	ctx, _, _, err := readAndValidate(rs, conf, time.Now())
+	ctx, err := ReadAndValidate(rs, conf)
 	if err != nil {
 		return err
 	}
 
-	if ctx.Version() == model.V20 {
-		return pdfcpu.ErrUnsupportedVersion
-	}
-
 	delete(ctx.RootDict, "PageLayout")
 
-	if err = WriteContext(ctx, w); err != nil {
-		return err
-	}
-
-	return nil
+	return Write(ctx, w, conf)
 }
 
 // ResetPageLayoutFile resets inFile's page layout and writes the result to outFile.

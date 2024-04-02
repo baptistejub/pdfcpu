@@ -17,21 +17,21 @@ limitations under the License.
 package model
 
 import (
-	"encoding/hex"
+	"context"
 	"strconv"
 	"strings"
 	"unicode"
 
+	"github.com/pkg/errors"
+
 	"github.com/pdfcpu/pdfcpu/pkg/log"
 	"github.com/pdfcpu/pdfcpu/pkg/pdfcpu/types"
-	"github.com/pkg/errors"
 )
 
 var (
 	errArrayCorrupt            = errors.New("pdfcpu: parse: corrupt array")
 	errArrayNotTerminated      = errors.New("pdfcpu: parse: unterminated array")
 	errDictionaryCorrupt       = errors.New("pdfcpu: parse: corrupt dictionary")
-	errDictionaryDuplicateKey  = errors.New("pdfcpu: parse: duplicate key")
 	errDictionaryNotTerminated = errors.New("pdfcpu: parse: unterminated dictionary")
 	errHexLiteralCorrupt       = errors.New("pdfcpu: parse: corrupt hex literal")
 	errHexLiteralNotTerminated = errors.New("pdfcpu: parse: hex literal not terminated")
@@ -74,15 +74,15 @@ func positionToNextWhitespaceOrChar(s, chars string) (int, string) {
 	return -1, s
 }
 
-func positionToNextEOL(s string) string {
+func positionToNextEOL(s string) (string, int) {
 	for i, c := range s {
 		for _, m := range "\x0A\x0D" {
 			if c == m {
-				return s[i:]
+				return s[i:], i
 			}
 		}
 	}
-	return ""
+	return "", 0
 }
 
 // trimLeftSpace trims leading whitespace and trailing comment.
@@ -118,7 +118,7 @@ func trimLeftSpace(s string, relaxed bool) (string, bool) {
 			break
 		}
 		// trim PDF comment (= '%' up to eol)
-		s = positionToNextEOL(s)
+		s, _ = positionToNextEOL(s)
 		if log.ParseEnabled() {
 			log.Parse.Printf("2 outstr: <%s>\n", s)
 		}
@@ -292,7 +292,7 @@ func ParseObjectAttributes(line *string) (objectNumber *int, generationNumber *i
 	return objectNumber, generationNumber, nil
 }
 
-func parseArray(line *string) (*types.Array, error) {
+func parseArray(c context.Context, line *string) (*types.Array, error) {
 	if log.ParseEnabled() {
 		log.Parse.Println("ParseObject: value = Array")
 	}
@@ -329,7 +329,7 @@ func parseArray(line *string) (*types.Array, error) {
 
 	for !strings.HasPrefix(l, "]") {
 
-		obj, err := ParseObject(&l)
+		obj, err := ParseObjectContext(c, &l)
 		if err != nil {
 			return nil, err
 		}
@@ -460,30 +460,13 @@ func parseHexLiteral(line *string) (types.Object, error) {
 	return types.HexLiteral(*hexStr), nil
 }
 
-func validateNameHexSequence(s string) error {
-	for i := 0; i < len(s); {
-		c := s[i]
-		if c != '#' {
-			i++
-			continue
-		}
-
-		// # detected, next 2 chars have to exist.
-		if len(s) < i+3 {
-			return errNameObjectCorrupt
-		}
-
-		s1 := s[i+1 : i+3]
-
-		// And they have to be hex characters.
-		_, err := hex.DecodeString(s1)
-		if err != nil {
-			return errNameObjectCorrupt
-		}
-
-		i += 3
+func decodeNameHexSequence(s string) (string, error) {
+	decoded, err := types.DecodeName(s)
+	if err != nil {
+		return "", errNameObjectCorrupt
 	}
-	return nil
+
+	return decoded, nil
 }
 
 func parseName(line *string) (*types.Name, error) {
@@ -517,8 +500,8 @@ func parseName(line *string) (*types.Name, error) {
 		l = l[:eok]
 	}
 
-	// Validate optional #xx sequences
-	err := validateNameHexSequence(l)
+	// Decode optional #xx sequences
+	l, err := decodeNameHexSequence(l)
 	if err != nil {
 		return nil, err
 	}
@@ -527,58 +510,75 @@ func parseName(line *string) (*types.Name, error) {
 	return &nameObj, nil
 }
 
-func processDictKeys(line *string, relaxed bool) (types.Dict, error) {
+func insertKey(d types.Dict, key string, val types.Object) error {
+	if _, found := d[key]; !found {
+		d[key] = val
+	} else {
+		// for now we digest duplicate keys.
+		// TODO
+		// if !validationRelaxed {
+		// 	return errDictionaryDuplicateKey
+		// }
+		// if log.CLIEnabled() {
+		// 	log.CLI.Printf("ParseDict: digesting duplicate key\n")
+		// }
+	}
+
+	if log.ParseEnabled() {
+		log.Parse.Printf("ParseDict: dict[%s]=%v\n", key, val)
+	}
+
+	return nil
+}
+
+func processDictKeys(c context.Context, line *string, relaxed bool) (types.Dict, error) {
 	l := *line
 	var eol bool
 	d := types.NewDict()
+
 	for !strings.HasPrefix(l, ">>") {
-		key, err := parseName(&l)
+
+		if err := c.Err(); err != nil {
+			return nil, err
+		}
+
+		keyName, err := parseName(&l)
 		if err != nil {
 			return nil, err
 		}
+
 		if log.ParseEnabled() {
-			log.Parse.Printf("ParseDict: key = %s\n", key)
+			log.Parse.Printf("ParseDict: key = %s\n", keyName)
 		}
 
-		// position to first non whitespace after key
+		// Position to first non whitespace after key.
 		l, eol = trimLeftSpace(l, relaxed)
 
 		if len(l) == 0 {
 			if log.ParseEnabled() {
 				log.Parse.Println("ParseDict: only whitespace after key")
 			}
-			// only whitespace after key
+			// Only whitespace after key.
 			return nil, errDictionaryNotTerminated
 		}
 
-		// Fix for #252:
-		// For dicts with kv pairs terminated by eol we accept a missing value as an empty string.
-		if eol {
-			obj := types.StringLiteral("")
-			if log.ParseEnabled() {
-				log.Parse.Printf("ParseDict: dict[%s]=%v\n", key, obj)
-			}
-			if ok := d.Insert(string(*key), obj); !ok {
-				return nil, errDictionaryDuplicateKey
-			}
-			continue
-		}
+		var val types.Object
 
-		obj, err := ParseObject(&l)
-		if err != nil {
-			return nil, err
+		if eol {
+			// #252: For dicts with kv pairs terminated by eol we accept a missing value as an empty string.
+			val = types.StringLiteral("")
+		} else {
+			if val, err = ParseObject(&l); err != nil {
+				return nil, err
+			}
 		}
 
 		// Specifying the null object as the value of a dictionary entry (7.3.7, "Dictionary Objects")
-		// hall be equivalent to omitting the entry entirely.
-		if obj != nil {
-			d.Insert(string(*key), obj)
-			if log.ParseEnabled() {
-				log.Parse.Printf("ParseDict: dict[%s]=%v\n", key, obj)
+		// shall be equivalent to omitting the entry entirely.
+		if val != nil {
+			if err := insertKey(d, string(*keyName), val); err != nil {
+				return nil, err
 			}
-			// if ok := d.Insert(string(*key), obj); !ok {
-			// 	return nil, errDictionaryDuplicateKey
-			// }
 		}
 
 		// We are positioned on the char behind the last parsed dict value.
@@ -597,7 +597,7 @@ func processDictKeys(line *string, relaxed bool) (types.Dict, error) {
 	return d, nil
 }
 
-func parseDict(line *string, relaxed bool) (types.Dict, error) {
+func parseDict(c context.Context, line *string, relaxed bool) (types.Dict, error) {
 	if line == nil || len(*line) == 0 {
 		return nil, errNoDictionary
 	}
@@ -623,7 +623,7 @@ func parseDict(line *string, relaxed bool) (types.Dict, error) {
 		return nil, errDictionaryNotTerminated
 	}
 
-	d, err := processDictKeys(&l, relaxed)
+	d, err := processDictKeys(c, &l, relaxed)
 	if err != nil {
 		return nil, err
 	}
@@ -829,7 +829,7 @@ func parseNumericOrIndRef(line *string) (types.Object, error) {
 	return parseIndRef(s, l, l1, line, i, i2, rangeErr)
 }
 
-func parseHexLiteralOrDict(l *string) (val types.Object, err error) {
+func parseHexLiteralOrDict(c context.Context, l *string) (val types.Object, err error) {
 	if len(*l) < 2 {
 		return nil, errBufNotAvailable
 	}
@@ -843,8 +843,8 @@ func parseHexLiteralOrDict(l *string) (val types.Object, err error) {
 			d   types.Dict
 			err error
 		)
-		if d, err = parseDict(l, false); err != nil {
-			if d, err = parseDict(l, true); err != nil {
+		if d, err = parseDict(c, l, false); err != nil {
+			if d, err = parseDict(c, l, true); err != nil {
 				return nil, err
 			}
 		}
@@ -892,6 +892,12 @@ func parseBooleanOrNull(l string) (val types.Object, s string, ok bool) {
 
 // ParseObject parses next Object from string buffer and returns the updated (left clipped) buffer.
 func ParseObject(line *string) (types.Object, error) {
+	return ParseObjectContext(context.Background(), line)
+}
+
+// ParseObjectContext parses next Object from string buffer and returns the updated (left clipped) buffer.
+// If the passed context is cancelled, parsing will be interrupted.
+func ParseObjectContext(c context.Context, line *string) (types.Object, error) {
 	if noBuf(line) {
 		return nil, errBufNotAvailable
 	}
@@ -915,7 +921,7 @@ func ParseObject(line *string) (types.Object, error) {
 	switch l[0] {
 
 	case '[': // array
-		a, err := parseArray(&l)
+		a, err := parseArray(c, &l)
 		if err != nil {
 			return nil, err
 		}
@@ -929,7 +935,7 @@ func ParseObject(line *string) (types.Object, error) {
 		value = *nameObj
 
 	case '<': // hex literal or dict
-		value, err = parseHexLiteralOrDict(&l)
+		value, err = parseHexLiteralOrDict(c, &l)
 		if err != nil {
 			return nil, err
 		}
@@ -1031,7 +1037,7 @@ func ParseXRefStreamDict(sd *types.StreamDict) (*types.XRefStreamDict, error) {
 			log.Parse.Println("ParseXRefStreamDict: using index dict")
 		}
 
-		if len(indArr)%2 > 1 {
+		if len(indArr)%2 != 0 {
 			return nil, errXrefStreamCorruptIndex
 		}
 
@@ -1091,4 +1097,74 @@ func ObjectStreamDict(sd *types.StreamDict) (*types.ObjectStreamDict, error) {
 		ObjArray:       nil}
 
 	return &osd, nil
+}
+
+func detectMarkers(line string, off int, endInd, streamInd *int) {
+	if *endInd <= 0 {
+		*endInd = strings.Index(line, "endobj")
+		if *endInd > 0 {
+			*endInd += off
+		}
+	}
+	if *streamInd <= 0 {
+		*streamInd = strings.Index(line, "stream")
+		if *streamInd > 0 {
+			*streamInd += off
+		}
+	}
+}
+
+func positionAfterStringLiteral(line string) (string, int, error) {
+	i := balancedParenthesesPrefix(line)
+	if i < 0 {
+		return "", 0, errStringLiteralCorrupt
+	}
+
+	line = forwardParseBuf(line[i:], 1)
+
+	return line, i + 1, nil
+}
+
+func DetectKeywords(line string) (endInd int, streamInd int, err error) {
+	off, i := 0, 0
+	for {
+
+		pos1 := strings.Index(line, "(") // TODO ignore "\(""
+		pos2 := strings.Index(line, "%") // TODO ignore "\%""
+
+		if pos1 < 0 && pos2 < 0 {
+			detectMarkers(line, off, &endInd, &streamInd)
+			return endInd, streamInd, nil
+		}
+
+		if pos2 < 0 || (pos1 >= 0 && pos1 < pos2) {
+			// Skip string literal.
+			l := line[:pos1]
+			detectMarkers(l, off, &endInd, &streamInd)
+			if endInd > 0 || streamInd > 0 {
+				return endInd, streamInd, nil
+			}
+			line, i, err = positionAfterStringLiteral(line[pos1:])
+			if err != nil {
+				if endInd < 0 && streamInd < 0 {
+					err = nil
+				}
+				return -1, -1, err
+			}
+			off += pos1 + i
+			continue
+		}
+
+		// Skip comment.
+		l := line[:pos2]
+		detectMarkers(l, off, &endInd, &streamInd)
+		if endInd > 0 || streamInd > 0 {
+			return endInd, streamInd, nil
+		}
+		line, i = positionToNextEOL(line[pos2:])
+		if line == "" {
+			return -1, -1, nil
+		}
+		off += pos2 + i
+	}
 }

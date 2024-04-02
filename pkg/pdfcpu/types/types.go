@@ -17,7 +17,6 @@ limitations under the License.
 package types
 
 import (
-	"bytes"
 	"encoding/hex"
 	"fmt"
 	"strconv"
@@ -147,7 +146,8 @@ func (i Integer) Value() int {
 
 // Point represents a user space location.
 type Point struct {
-	X, Y float64
+	X float64 `json:"x"`
+	Y float64 `json:"y"`
 }
 
 // Translate modifies p's coordinates.
@@ -162,7 +162,8 @@ func (p Point) String() string {
 
 // Rectangle represents a rectangular region in userspace.
 type Rectangle struct {
-	LL, UR Point
+	LL Point `json:"ll"`
+	UR Point `json:"ur"`
 }
 
 // NewRectangle returns a new rectangle for given corner coordinates.
@@ -273,6 +274,34 @@ func (r Rectangle) Clone() *Rectangle {
 // CroppedCopy returns a copy of r with applied margin..
 func (r Rectangle) CroppedCopy(margin float64) *Rectangle {
 	return NewRectangle(r.LL.X+margin, r.LL.Y+margin, r.UR.X-margin, r.UR.Y-margin)
+}
+
+// ToInches converts r to inches.
+func (r Rectangle) ToInches() *Rectangle {
+	return NewRectangle(r.LL.X*userSpaceToInch, r.LL.Y*userSpaceToInch, r.UR.X*userSpaceToInch, r.UR.Y*userSpaceToInch)
+}
+
+// ToCentimetres converts r to centimetres.
+func (r Rectangle) ToCentimetres() *Rectangle {
+	return NewRectangle(r.LL.X*userSpaceToCm, r.LL.Y*userSpaceToCm, r.UR.X*userSpaceToCm, r.UR.Y*userSpaceToCm)
+}
+
+// ToMillimetres converts r to millimetres.
+func (r Rectangle) ToMillimetres() *Rectangle {
+	return NewRectangle(r.LL.X*userSpaceToMm, r.LL.Y*userSpaceToMm, r.UR.X*userSpaceToMm, r.UR.Y*userSpaceToMm)
+}
+
+// ConvertToUnit converts r to unit.
+func (r *Rectangle) ConvertToUnit(unit DisplayUnit) *Rectangle {
+	switch unit {
+	case INCHES:
+		return r.ToInches()
+	case CENTIMETRES:
+		return r.ToCentimetres()
+	case MILLIMETRES:
+		return r.ToMillimetres()
+	}
+	return r
 }
 
 func (r Rectangle) formatToInches() string {
@@ -388,34 +417,14 @@ func (nameObject Name) String() string {
 func (nameObject Name) PDFString() string {
 	s := " "
 	if len(nameObject) > 0 {
-		s = string(nameObject)
+		s = EncodeName(string(nameObject))
 	}
 	return fmt.Sprintf("/%s", s)
 }
 
 // Value returns a string value for this PDF object.
 func (nameObject Name) Value() string {
-
-	s := string(nameObject)
-	var b bytes.Buffer
-
-	for i := 0; i < len(s); {
-		c := s[i]
-		if c != '#' {
-			b.WriteByte(c)
-			i++
-			continue
-		}
-
-		// # detected, next 2 chars have to exist.
-		// This gets checked during parsing.
-		s1 := s[i+1 : i+3]
-		b1, _ := hex.DecodeString(s1)
-		b.WriteByte(b1[0])
-		i += 3
-	}
-
-	return b.String()
+	return string(nameObject)
 }
 
 ///////////////////////////////////////////////////////////////////////////////////
@@ -545,7 +554,8 @@ func ToUserSpace(f float64, unit DisplayUnit) float64 {
 // like a PDF page, a sheet of paper or an image grid
 // in user space, inches, centimetres or millimetres.
 type Dim struct {
-	Width, Height float64
+	Width  float64 `json:"width"`
+	Height float64 `json:"height"`
 }
 
 // ToInches converts d to inches.
@@ -558,7 +568,7 @@ func (d Dim) ToCentimetres() Dim {
 	return Dim{d.Width * userSpaceToCm, d.Height * userSpaceToCm}
 }
 
-// ToMillimetres converts d to centimetres.
+// ToMillimetres converts d to millimetres.
 func (d Dim) ToMillimetres() Dim {
 	return Dim{d.Width * userSpaceToMm, d.Height * userSpaceToMm}
 }

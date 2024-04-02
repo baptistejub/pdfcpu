@@ -21,8 +21,10 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"math"
 	"os"
 	"sort"
+	"strconv"
 	"time"
 
 	"github.com/pdfcpu/pdfcpu/pkg/api"
@@ -30,6 +32,7 @@ import (
 	"github.com/pdfcpu/pdfcpu/pkg/pdfcpu"
 	"github.com/pdfcpu/pdfcpu/pkg/pdfcpu/form"
 	"github.com/pdfcpu/pdfcpu/pkg/pdfcpu/model"
+	"github.com/pdfcpu/pdfcpu/pkg/pdfcpu/types"
 	"github.com/pkg/errors"
 )
 
@@ -43,7 +46,7 @@ func listAttachments(rs io.ReadSeeker, conf *model.Configuration, withDesc, sort
 	}
 	conf.Cmd = model.LISTATTACHMENTS
 
-	ctx, _, _, _, err := api.ReadValidateAndOptimize(rs, conf, time.Now())
+	ctx, err := api.ReadAndValidate(rs, conf)
 	if err != nil {
 		return nil, err
 	}
@@ -120,12 +123,8 @@ func listBoxes(rs io.ReadSeeker, selectedPages []string, pb *model.PageBoundarie
 	}
 	conf.Cmd = model.LISTBOXES
 
-	ctx, _, _, _, err := api.ReadValidateAndOptimize(rs, conf, time.Now())
+	ctx, err := api.ReadAndValidate(rs, conf)
 	if err != nil {
-		return nil, err
-	}
-
-	if err := ctx.EnsurePageCount(); err != nil {
 		return nil, err
 	}
 
@@ -160,12 +159,8 @@ func listFormFields(rs io.ReadSeeker, conf *model.Configuration) ([]string, erro
 	}
 	conf.Cmd = model.LISTFORMFIELDS
 
-	ctx, _, _, _, err := api.ReadValidateAndOptimize(rs, conf, time.Now())
+	ctx, err := api.ReadAndValidate(rs, conf)
 	if err != nil {
-		return nil, err
-	}
-
-	if err := ctx.EnsurePageCount(); err != nil {
 		return nil, err
 	}
 
@@ -216,12 +211,8 @@ func listImages(rs io.ReadSeeker, selectedPages []string, conf *model.Configurat
 	}
 	conf.Cmd = model.LISTIMAGES
 
-	ctx, _, _, _, err := api.ReadValidateAndOptimize(rs, conf, time.Now())
+	ctx, err := api.ReadValidateAndOptimize(rs, conf)
 	if err != nil {
-		return nil, err
-	}
-
-	if err := ctx.EnsurePageCount(); err != nil {
 		return nil, err
 	}
 
@@ -294,6 +285,73 @@ func ListInfoFile(inFile string, selectedPages []string, conf *model.Configurati
 	return append([]string{inFile + ":"}, ss...), err
 }
 
+func jsonInfo(info *pdfcpu.PDFInfo, pages types.IntSet) (map[string]model.PageBoundaries, []types.Dim) {
+	if len(pages) > 0 {
+		pbs := map[string]model.PageBoundaries{}
+		for i, pb := range info.PageBoundaries {
+			if _, found := pages[i+1]; !found {
+				continue
+			}
+			d := pb.CropBox().Dimensions()
+			if pb.Rot%180 != 0 {
+				d.Width, d.Height = d.Height, d.Width
+			}
+			pb.Orientation = "portrait"
+			if d.Landscape() {
+				pb.Orientation = "landscape"
+			}
+			if pb.Media != nil {
+				pb.Media.Rect = pb.Media.Rect.ConvertToUnit(info.Unit)
+				pb.Media.Rect.LL.X = math.Round(pb.Media.Rect.LL.X*100) / 100
+				pb.Media.Rect.LL.Y = math.Round(pb.Media.Rect.LL.Y*100) / 100
+				pb.Media.Rect.UR.X = math.Round(pb.Media.Rect.UR.X*100) / 100
+				pb.Media.Rect.UR.Y = math.Round(pb.Media.Rect.UR.Y*100) / 100
+			}
+			if pb.Crop != nil {
+				pb.Crop.Rect = pb.Crop.Rect.ConvertToUnit(info.Unit)
+				pb.Crop.Rect.LL.X = math.Round(pb.Crop.Rect.LL.X*100) / 100
+				pb.Crop.Rect.LL.Y = math.Round(pb.Crop.Rect.LL.Y*100) / 100
+				pb.Crop.Rect.UR.X = math.Round(pb.Crop.Rect.UR.X*100) / 100
+				pb.Crop.Rect.UR.Y = math.Round(pb.Crop.Rect.UR.Y*100) / 100
+			}
+			if pb.Trim != nil {
+				pb.Trim.Rect = pb.Trim.Rect.ConvertToUnit(info.Unit)
+				pb.Trim.Rect.LL.X = math.Round(pb.Trim.Rect.LL.X*100) / 100
+				pb.Trim.Rect.LL.Y = math.Round(pb.Trim.Rect.LL.Y*100) / 100
+				pb.Trim.Rect.UR.X = math.Round(pb.Trim.Rect.UR.X*100) / 100
+				pb.Trim.Rect.UR.Y = math.Round(pb.Trim.Rect.UR.Y*100) / 100
+			}
+			if pb.Bleed != nil {
+				pb.Bleed.Rect = pb.Bleed.Rect.ConvertToUnit(info.Unit)
+				pb.Bleed.Rect.LL.X = math.Round(pb.Bleed.Rect.LL.X*100) / 100
+				pb.Bleed.Rect.LL.Y = math.Round(pb.Bleed.Rect.LL.Y*100) / 100
+				pb.Bleed.Rect.UR.X = math.Round(pb.Bleed.Rect.UR.X*100) / 100
+				pb.Bleed.Rect.UR.Y = math.Round(pb.Bleed.Rect.UR.Y*100) / 100
+			}
+			if pb.Art != nil {
+				pb.Art.Rect = pb.Art.Rect.ConvertToUnit(info.Unit)
+				pb.Art.Rect.LL.X = math.Round(pb.Art.Rect.LL.X*100) / 100
+				pb.Art.Rect.LL.Y = math.Round(pb.Art.Rect.LL.Y*100) / 100
+				pb.Art.Rect.UR.X = math.Round(pb.Art.Rect.UR.X*100) / 100
+				pb.Art.Rect.UR.Y = math.Round(pb.Art.Rect.UR.Y*100) / 100
+			}
+			pbs[strconv.Itoa(i+1)] = pb
+		}
+		return pbs, nil
+	}
+
+	var dims []types.Dim
+	for k, v := range info.PageDimensions {
+		if v {
+			dc := k.ConvertToUnit(info.Unit)
+			dc.Width = math.Round(dc.Width*100) / 100
+			dc.Height = math.Round(dc.Height*100) / 100
+			dims = append(dims, dc)
+		}
+	}
+	return nil, dims
+}
+
 func listInfoFilesJSON(inFiles []string, selectedPages []string, conf *model.Configuration) ([]string, error) {
 	var infos []*pdfcpu.PDFInfo
 
@@ -310,12 +368,19 @@ func listInfoFilesJSON(inFiles []string, selectedPages []string, conf *model.Con
 			return nil, err
 		}
 
+		pages, err := api.PagesForPageSelection(info.PageCount, selectedPages, false, false)
+		if err != nil {
+			return nil, err
+		}
+
+		info.Boundaries, info.Dimensions = jsonInfo(info, pages)
+
 		infos = append(infos, info)
 	}
 
 	s := struct {
-		Header pdfcpu.Header `json:"header"`
-		Infos  []*pdfcpu.PDFInfo
+		Header pdfcpu.Header     `json:"header"`
+		Infos  []*pdfcpu.PDFInfo `json:"infos"`
 	}{
 		Header: pdfcpu.Header{Version: "pdfcpu " + model.VersionStr, Creation: time.Now().Format("2006-01-02 15:04:05 MST")},
 		Infos:  infos,
@@ -376,9 +441,13 @@ func listPermissions(rs io.ReadSeeker, conf *model.Configuration) ([]string, err
 	}
 	conf.Cmd = model.LISTPERMISSIONS
 
-	ctx, _, _, _, err := api.ReadValidateAndOptimize(rs, conf, time.Now())
+	ctx, err := api.ReadAndValidate(rs, conf)
 	if err != nil {
 		return nil, err
+	}
+
+	if ctx.Version() == model.V20 {
+		return nil, pdfcpu.ErrUnsupportedVersion
 	}
 
 	return pdfcpu.Permissions(ctx), nil
@@ -423,12 +492,11 @@ func listProperties(rs io.ReadSeeker, conf *model.Configuration) ([]string, erro
 	if conf == nil {
 		conf = model.NewDefaultConfiguration()
 	} else {
-		// Validation loads infodict.
 		conf.ValidationMode = model.ValidationRelaxed
 	}
 	conf.Cmd = model.LISTPROPERTIES
 
-	ctx, _, _, _, err := api.ReadValidateAndOptimize(rs, conf, time.Now())
+	ctx, err := api.ReadAndValidate(rs, conf)
 	if err != nil {
 		return nil, err
 	}
@@ -455,12 +523,11 @@ func listBookmarks(rs io.ReadSeeker, conf *model.Configuration) ([]string, error
 	if conf == nil {
 		conf = model.NewDefaultConfiguration()
 	} else {
-		// Validation loads infodict.
 		conf.ValidationMode = model.ValidationRelaxed
 	}
 	conf.Cmd = model.LISTBOOKMARKS
 
-	ctx, _, _, _, err := api.ReadValidateAndOptimize(rs, conf, time.Now())
+	ctx, err := api.ReadAndValidate(rs, conf)
 	if err != nil {
 		return nil, err
 	}

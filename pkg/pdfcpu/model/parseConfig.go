@@ -33,6 +33,7 @@ type configuration struct {
 	Reader15                        bool   `yaml:"reader15"`
 	DecodeAllStreams                bool   `yaml:"decodeAllStreams"`
 	ValidationMode                  string `yaml:"validationMode"`
+	PostProcessValidate             bool   `yaml:"postProcessValidate"`
 	Eol                             string `yaml:"eol"`
 	WriteObjectStream               bool   `yaml:"writeObjectStream"`
 	WriteXRefStream                 bool   `yaml:"writeXRefStream"`
@@ -43,6 +44,8 @@ type configuration struct {
 	Units                           string `yaml:"units"` // Be flexible if version < v0.3.8
 	TimestampFormat                 string `yaml:"timestampFormat"`
 	DateFormat                      string `yaml:"dateFormat"`
+	Optimize                        bool   `yaml:"optimize"`
+	OptimizeResourceDicts           bool   `yaml:"optimizeResourceDicts"`
 	OptimizeDuplicateContentStreams bool   `yaml:"optimizeDuplicateContentStreams"`
 	CreateBookmarks                 bool   `yaml:"createBookmarks"`
 	NeedAppearances                 bool   `yaml:"needAppearances"`
@@ -66,9 +69,9 @@ func loadedConfig(c configuration, configPath string) *Configuration {
 		conf.ValidationMode = ValidationStrict
 	case "ValidationRelaxed":
 		conf.ValidationMode = ValidationRelaxed
-	case "ValidationNone":
-		conf.ValidationMode = ValidationNone
 	}
+
+	conf.PostProcessValidate = c.PostProcessValidate
 
 	switch c.Eol {
 	case "EolLF":
@@ -92,6 +95,8 @@ func loadedConfig(c configuration, configPath string) *Configuration {
 
 	conf.TimestampFormat = c.TimestampFormat
 	conf.DateFormat = c.DateFormat
+	conf.Optimize = c.Optimize
+	conf.OptimizeResourceDicts = c.OptimizeResourceDicts
 	conf.OptimizeDuplicateContentStreams = c.OptimizeDuplicateContentStreams
 	conf.CreateBookmarks = c.CreateBookmarks
 	conf.NeedAppearances = c.NeedAppearances
@@ -114,7 +119,7 @@ func parseConfigFile(r io.Reader, configPath string) error {
 		return err
 	}
 
-	if !types.MemberOf(c.ValidationMode, []string{"ValidationStrict", "ValidationRelaxed", "ValidationNone"}) {
+	if !types.MemberOf(c.ValidationMode, []string{"ValidationStrict", "ValidationRelaxed"}) {
 		return errors.Errorf("invalid validationMode: %s", c.ValidationMode)
 	}
 	if !types.MemberOf(c.Eol, []string{"EolLF", "EolCR", "EolCRLF"}) {

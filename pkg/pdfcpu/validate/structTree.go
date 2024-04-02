@@ -17,6 +17,8 @@ limitations under the License.
 package validate
 
 import (
+	"strconv"
+
 	"github.com/pdfcpu/pdfcpu/pkg/pdfcpu/model"
 	"github.com/pdfcpu/pdfcpu/pkg/pdfcpu/types"
 	"github.com/pkg/errors"
@@ -90,7 +92,7 @@ func validateObjectReferenceDict(xRefTable *model.XRefTable, d types.Dict) error
 	}
 
 	if obj == nil {
-		return errors.New("pdfcpu: validateObjectReferenceDict: missing required entry \"Obj\"")
+		return errors.Errorf("pdfcpu: validateObjectReferenceDict: missing obj#%s", ir.ObjectNumber)
 	}
 
 	return nil
@@ -353,7 +355,17 @@ func validateStructElementDictPart1(xRefTable *model.XRefTable, d types.Dict, di
 	// S: structure type, required, name, see 14.7.3 and Annex E.
 	_, err := validateNameEntry(xRefTable, d, dictName, "S", OPTIONAL, model.V10, nil)
 	if err != nil {
-		return err
+		if xRefTable.ValidationMode == model.ValidationStrict {
+			return err
+		}
+		i, err := validateIntegerEntry(xRefTable, d, dictName, "S", OPTIONAL, model.V10, nil)
+		if err != nil {
+			return err
+		}
+		if i != nil {
+			// Repair
+			d["S"] = types.Name(strconv.Itoa((*i).Value()))
+		}
 	}
 
 	// P: immediate parent, required, indirect reference

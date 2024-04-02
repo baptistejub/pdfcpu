@@ -57,7 +57,7 @@ The commands are:
    paper         print list of supported paper sizes
    permissions   list, set user access permissions
    portfolio     list, add, remove, extract portfolio entries with optional description
-   poster        cut selected pages into poster using paper size or dimensions
+   poster        cut selected pages into poster by paper size or dimensions
    properties    list, add, remove document properties
    resize        scale selected pages
    rotate        rotate selected pages
@@ -69,6 +69,7 @@ The commands are:
    version       print version
    viewerpref    list, set, reset viewer preferences for opened document
    watermark     add, remove, update Unicode text, image or PDF watermarks for selected pages
+   zoom          zoom in/out of selected pages by magnification factor or corresponding margin
 
    All instantly recognizable command prefixes are supported eg. val for validation
    One letter Unix style abbreviations supported for flags and command parameters.
@@ -337,7 +338,7 @@ content ... extract raw page content
          Use the following format strings:
                %p ... current page number
                %P ... total pages
-         eg. pdfcpu stamp add -mode text -- "Page %p of %P" "sc:1.0 abs, pos:bc, rot:0" in.pdf out.pdf
+         eg. pdfcpu stamp add -mode text -- "Page %p of %P" "scale:1.0 abs, pos:bc, rot:0" in.pdf out.pdf
    
    2) image based
       -mode image imageFileName
@@ -354,7 +355,7 @@ content ... extract raw page content
          Eg: pdfcpu stamp add -mode pdf -- "stamp.pdf" "" in.pdf out.pdf ... multistamp all pages of in.pdf with ascending pages of stamp.pdf
    
       -mode pdf PDFFileName:startPage#Src:startPage#Dest
-         Customize your multistamp by by starting with startPage#Src of a stamp PDF file.
+         Customize your multistamp by starting with startPage#Src of a stamp PDF file.
          Apply repeatedly pages of the stamp file to inFile starting at startPage#Dest.
          Eg: pdfcpu stamp add -mode pdf -- "stamp.pdf:2:3" "" in.pdf out.pdf ... multistamp starting with page 2 of stamp.pdf onto page 3 of in.pdf
    `
@@ -367,7 +368,7 @@ content ... extract raw page content
          Use the following format strings:
                %p ... current page number
                %P ... total pages
-         eg. pdfcpu watermark add -mode text -- "Page %p of %P" "sc:1.0 abs, pos:bc, rot:0" in.pdf out.pdf
+         eg. pdfcpu watermark add -mode text -- "Page %p of %P" "scale:1.0 abs, pos:bc, rot:0" in.pdf out.pdf
    
    2) image based
       -mode image imageFileName
@@ -384,7 +385,7 @@ content ... extract raw page content
          Eg: pdfcpu watermark add -mode pdf -- "watermark.pdf" "" in.pdf out.pdf ... multiwatermark all pages of in.pdf with ascending pages of watermark.pdf
 
       -mode pdf PDFFileName:startPage#Src:startPage#Dest
-         Customize your multiwatermark by by starting with startPage#Src of a watermark PDF file.
+         Customize your multiwatermark by starting with startPage#Src of a watermark PDF file.
          Apply repeatedly pages of the watermark file to inFile starting at startPage#Dest.
          Eg: pdfcpu watermark add -mode pdf -- "watermark.pdf:2:3" "" in.pdf out.pdf ... multiwatermark starting with page 2 of watermark.pdf onto page 3 of in.pdf
 
@@ -395,9 +396,17 @@ content ... extract raw page content
 
 <description> is a comma separated configuration string containing these optional entries:
    
-   (defaults: "font:Helvetica, points:24, rtl:off, pos:c, off:0,0 sc:0.5 rel, rot:0, d:1, op:1, m:0 and for all colors: 0.5 0.5 0.5")
+   (defaults: "font:Helvetica, points:24, rtl:off, pos:c, off:0,0 scale:0.5 rel, rot:0, d:1, op:1, m:0 and for all colors: 0.5 0.5 0.5")
 
    fontname:         Please refer to "pdfcpu fonts list"
+
+   scriptname:       to avoid embedding of big font files
+
+                     ISO-15924 code    CID System Info
+                     Hans              UniGB-UTF16-H  / GB1
+                     Hant              UniCNS-UTF16-H / CNS1
+                     Hira, Kana, Jpan  UniJIS-UTF16-H / Japan1
+                     Hang, Kore        UniKS-UTF16-H  / KR
 
    points:           fontsize in points, in combination with absolute scaling only.
 
@@ -458,9 +467,9 @@ A color value: 3 color intensities, where 0.0 < i < 1.0, eg 1.0,
 
 All configuration string parameters support completion.
 
-e.g. "pos:bl, off: 20 5"   "rot:45"                 "op:0.5, sc:0.5 abs, rot:0"
-     "d:2"                 "sc:.75 abs, points:48"  "rot:-90, scale:0.75 rel"
-     "f:Courier, sc:0.75, str: 0.5 0.0 0.0, rot:20"
+e.g. "pos:bl, off: 20 5"   "rot:45"                 "op:0.5, scale:0.5 abs, rot:0"
+     "d:2"                 "scale:.75 abs, points:48"  "rot:-90, scale:0.75 rel"
+     "f:Courier, scale:0.75, str: 0.5 0.0 0.0, rot:20"
 
 
 `
@@ -656,34 +665,65 @@ Examples: pdfcpu nup out.pdf 4 in.pdf
               pages       ... for inFile only, please refer to "pdfcpu selectedpages"
               description ... dimensions, formsize, border, margin
               outFile     ... output PDF file
-              n           ... booklet style (2 or 4)
+              n           ... booklet style (2, 4, 6, 8)
               inFile      ... input PDF file
               imageFiles  ... input image file(s)
 
-There are two styles of booklet, depending on your page/input and sheet/output size:
+There are several styles of booklet, depending on your page/input and sheet/output size, 
+the edge along which your booklet will be bound,
+and your preferred method for creating the booklet.
 
-n=2: Two of your pages fit on one side of a sheet (eg statement on letter, A5 on A4)
+For assembly instructions for each type, see: https://pdfcpu.io/generate/booklet
+
+n=2: This is the simplest case and the most common for those printing at home.
+Two of your pages fit on one side of a sheet (eg statement on letter, A5 on A4)
 Assemble by printing on both sides (odd pages on the front and even pages on the back) and folding down the middle.
 
-A variant of n=2 is a technique to bind your own hardback book.
-It works best when the source PDF holding your book content has at least 128 pages.
-You bind your paper in eight sheet folios each making up 32 pages of your book.
-Each sheet is going to make four pages of your book, gets printed on both sides and folded in half.
-For such a multi folio booklet set 'multifolio:on' and play around with 'foliosize' which defaults to 8.
+n=4: Four of your pages fit on one side of a sheet (eg statement on ledger, A5 on A3, A6 on A4).
 
-n=4: Four of your pages fit on one side of a sheet (eg statement on ledger, A5 on A3, A6 on A4)
-Assemble by printing on both sides, then cutting the sheets horizontally.
-The sets of pages on the bottom of the sheet are rotated so that the cut side of the
-paper is on the bottom of the booklet for every page. After cutting, place the bottom
-set of pages after the top set of pages in the booklet. Then fold the half sheets.
+When printing 4-up, your booklet can be bound either along the long-edge (for portrait this is the left side of the paper, for landscape the top)
+or the short-edge (for portrait this is the top of the paper, for landscape the left side). 
+Using a different binding will change the ordering of the pages on the sheet. 
+You can set long or short-edge with the 'binding' option.
+
+In 4-up printing, the sets of pages on the bottom of the sheet are rotated so that the cut side of the
+paper is on the bottom of the booklet for every page (for the default portrait, long-edge binding case.
+Similar rotation logic applies for the other three orientations). 
+Having the cut edge always on bottom makes for more uniform pages within the book and less work in trimming.
+
+The btype=advanced is a special method for assembling, only for 4-up booklets.
+Printers that are used to collating first and then cutting may prefer this method.
+
+n=6: Six of your pages fit on one side of a sheet. This produces an unusual sized booklet. 
+
+Only available for portrait, long-edge orientation.
+
+n=8: Eight of your pages fit on one side of a sheet (eg A6 on A3).
+
+Only available for portrait, long-edge orientation.
+
+Perfect binding is a special type of booklet. The main difference is that the binding is glued into a spine,
+meaning that the pages are cut along the binding and not folded as in the other forms of booklet.
+This results in a different page ordering on the sheet than the other methods. If you intend to perfect bind your booklet,
+use btype=perfectbound.
+
+There is also an option to use signatures, a bookbinding method useful for books with higher page counts.
+In this method of binding, you arrange your folios (sheets folded in half) in groups of 'foliosize'.
+Each group is called a signature. You then stack the signatures together to form the book.
+For example, you can bind your paper in groups of eight sheets (foliosize=8), so that each signature containing 32 pages of your book.
+For such a multi folio booklet set 'multifolio:on' and 'foliosize', which defaults to 8.
+The last signature may be shorter, e.g. for a booklet of 120 pages with signature size=16 (foliosize=4) will have 7 complete signatures and a final signature of only 8 pages.
+
 
                              portrait landscape
- Possible values for n: 2 ...  1x2       2x1
+ Possible values for n: 2 ...  1x2       --
                         4 ...  2x2       2x2
+                        6 ...  2x3       --
+                        8 ...  2x4       --
 
 <description> is a comma separated configuration string containing these optional entries:
 
-   (defaults: "dim:595 842, formsize:A4, border:off, guides:off, margin:0")
+   (defaults: "dim:595 842, formsize:A4, btype: booklet, binding: long, multifolio: false, border:off, guides:off, margin:0")
 
    dimensions:       (width,height) of the output sheet in given display unit eg. '400 200'
    formsize:         The output sheet size, eg. A4, Letter, Legal...
@@ -692,6 +732,8 @@ set of pages after the top set of pages in the booklet. Then fold the half sheet
                      Only one of dimensions or format is allowed.
                      Please refer to "pdfcpu paper" for a comprehensive list of defined paper sizes.
                      "papersize" is also accepted.
+   btype:            The method for arranging pages into a booklet. (booklet, bookletadvanced, perfectbound)
+   binding:          The edge of the paper which has the binding. (long, short)
    multifolio:       Generate multi folio booklet (on/off, true/false, t/f) for n=2 and PDF input only.
    foliosize:        folio size for multi folio booklets only (default:8)
    border:           Print border (on/off, true/false, t/f) 
@@ -702,18 +744,32 @@ set of pages after the top set of pages in the booklet. Then fold the half sheet
 
 All configuration string parameters support completion.
 
-Examples: pdfcpu booklet -- "formsize:Letter" out.pdf 2 in.pdf
-           Arrange pages of in.pdf 2 per sheet side (4 per sheet, back and front) onto out.pdf
+Examples:
 
-          pdfcpu booklet -- "formsize:Ledger" out.pdf 4 in.pdf"
-           Arrange pages of in.pdf 4 per sheet side (8 per sheet, back and front) onto out.pdf
+   pdfcpu booklet -- "formsize:Letter" out.pdf 2 in.pdf
+      Arrange pages of in.pdf 2 per sheet side (4 per sheet, back and front) onto out.pdf
 
-          pdfcpu booklet -- "formsize:A4" out.pdf 2 in.pdf
-           Arrange pages of in.pdf 2 per sheet side (4 per sheet, back and front) onto out.pdf
+   pdfcpu booklet -- "formsize:Ledger" out.pdf 4 in.pdf
+      Arrange pages of in.pdf 4 per sheet side (8 per sheet, back and front) onto out.pdf
+           
+   pdfcpu booklet -- "formsize:Ledger" out.pdf 6 in.pdf
+      Arrange pages of in.pdf 6 per sheet side (12 per sheet, back and front) onto out.pdf
+  
+   pdfcpu booklet -- "formsize:A3" out.pdf 8 in.pdf
+      Arrange pages of in.pdf 8 per sheet side (16 per sheet, back and front) onto out.pdf
 
-          pdfcpu booklet -- "formsize:A4, multifolio:on" hardbackbook.pdf 2 in.pdf
-           Arrange pages of in.pdf 2 per sheetside as sequence of folios covering 4*foliosize pages each.
-           See also: https://www.instructables.com/How-to-bind-your-own-Hardback-Book/
+   pdfcpu booklet -- "formsize:A3, binding:short" out.pdf 4 in.pdf
+      Arrange pages of in.pdf 4 per sheet side, with short-edge binding onto out.pdf
+
+   pdfcpu booklet -- "formsize:A4, multifolio:on" hardbackbook.pdf 2 in.pdf
+      Arrange pages of in.pdf 2 per sheetside as sequence of folios covering 4*foliosize pages each.
+      See also: https://www.instructables.com/How-to-bind-your-own-Hardback-Book/
+
+   pdfcpu booklet -- "formsize:A4, btype:perfectbound" out.pdf 2 in.pdf
+      Arrange pages of in.pdf 2 per sheet side, arranged for perfect binding, onto out.pdf
+  
+   pdfcpu booklet -- "formsize:A3, btype:bookletadvanced" out.pdf 4 in.pdf
+      Arrange pages of in.pdf 4 per sheet side, arranged for advanced binding, onto out.pdf
 `
 
 	usageGrid     = "usage: pdfcpu grid [-p(ages) selectedPages] -- [description] outFile m n inFile|imageFiles..." + generalFlags
@@ -1549,4 +1605,30 @@ description ... scalefactor, dimensions, formsize, enforce, border, bgcolor
          }
    
     `
+
+	usageZoom = "usage: pdfcpu zoom [-p(ages) selectedPages] -- description inFile [outFile]" + generalFlags
+
+	usageLongZoom = `Zoom in/out of selected pages either by magnification factor or corresponding margin.
+
+      pages ... Please refer to "pdfcpu selectedpages"
+description ... factor, hmargin, vmargin, border, bgcolor
+     inFile ... input PDF file
+    outFile ... output PDF file
+
+Examples:
+   pdfcpu zoom -- "factor: 2"  in.pdf out.pdf           ... zoom in to magnification of 200%
+   pdfcpu zoom -- "factor: .5" in.pdf out.pdf           ... zoom out to magnification of 50%
+   
+   pdfcpu zoom -- "hmargin: -10" in.pdf out.pdf         ... zoom in to horizontal margin of -10 points
+   pdfcpu zoom -- "hmargin:  10" in.pdf out.pdf         ... zoom out to horizontal margin of 10 points
+
+   pdfcpu zoom -unit cm -- "hmargin: -1" in.pdf out.pdf ... zoom in to horizontal margin of -1 cm
+   pdfcpu zoom -unit cm -- "hmargin:  1" in.pdf out.pdf ... zoom out to horizontal margin of 1 cm
+   
+   pdfcpu zoom -- "vmargin: -10" in.pdf out.pdf         ... zoom in to vertical margin of -10 points
+   pdfcpu zoom -- "vmargin:  10" in.pdf out.pdf         ... zoom out to vertical margin of 10 points
+
+   pdfcpu zoom -unit cm -- "vmargin: -1" in.pdf out.pdf ... zoom in to vertical margin of -1 cm
+   pdfcpu zoom -unit cm -- "vmargin: 1, border:true, bgcolor:lightgray" in.pdf out.pdf ... zoom out to vertical margin of 1 cm
+`
 )

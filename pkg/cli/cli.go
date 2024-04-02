@@ -20,16 +20,11 @@ package cli
 import (
 	"github.com/pdfcpu/pdfcpu/pkg/api"
 	"github.com/pdfcpu/pdfcpu/pkg/pdfcpu/model"
-	"github.com/pkg/errors"
 )
 
 // Validate inFile against ISO-32000-1:2008.
 func Validate(cmd *Command) ([]string, error) {
-	conf := cmd.Conf
-	if conf != nil && conf.ValidationMode == model.ValidationNone {
-		return nil, errors.New("validate: mode == ValidationNone")
-	}
-	return nil, api.ValidateFiles(cmd.InFiles, conf)
+	return nil, api.ValidateFiles(cmd.InFiles, cmd.Conf)
 }
 
 // Optimize inFile and write result to outFile.
@@ -415,11 +410,15 @@ func SetViewerPreferences(cmd *Command) ([]string, error) {
 	if *cmd.InFileJSON != "" {
 		return nil, api.SetViewerPreferencesFileFromJSONFile(*cmd.InFile, *cmd.OutFile, *cmd.InFileJSON, cmd.Conf)
 	}
-
 	return nil, api.SetViewerPreferencesFileFromJSONBytes(*cmd.InFile, *cmd.OutFile, []byte(cmd.StringVal), cmd.Conf)
 }
 
 // ResetViewerPreferences resets inFile's viewer preferences.
 func ResetViewerPreferences(cmd *Command) ([]string, error) {
 	return nil, api.ResetViewerPreferencesFile(*cmd.InFile, *cmd.OutFile, cmd.Conf)
+}
+
+// Zoom in/out of selected pages either by zoom factor or corresponding margin.
+func Zoom(cmd *Command) ([]string, error) {
+	return nil, api.ZoomFile(*cmd.InFile, *cmd.OutFile, cmd.PageSelection, cmd.Zoom, cmd.Conf)
 }

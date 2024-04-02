@@ -19,7 +19,6 @@ package api
 import (
 	"io"
 	"os"
-	"time"
 
 	"github.com/pdfcpu/pdfcpu/pkg/log"
 	"github.com/pdfcpu/pdfcpu/pkg/pdfcpu/model"
@@ -53,12 +52,8 @@ func Boxes(rs io.ReadSeeker, selectedPages []string, conf *model.Configuration) 
 	}
 	conf.Cmd = model.LISTBOXES
 
-	ctx, _, _, _, err := ReadValidateAndOptimize(rs, conf, time.Now())
+	ctx, err := ReadValidateAndOptimize(rs, conf)
 	if err != nil {
-		return nil, err
-	}
-
-	if err := ctx.EnsurePageCount(); err != nil {
 		return nil, err
 	}
 
@@ -81,12 +76,8 @@ func AddBoxes(rs io.ReadSeeker, w io.Writer, selectedPages []string, pb *model.P
 	}
 	conf.Cmd = model.ADDBOXES
 
-	ctx, _, _, _, err := ReadValidateAndOptimize(rs, conf, time.Now())
+	ctx, err := ReadValidateAndOptimize(rs, conf)
 	if err != nil {
-		return err
-	}
-
-	if err := ctx.EnsurePageCount(); err != nil {
 		return err
 	}
 
@@ -99,13 +90,7 @@ func AddBoxes(rs io.ReadSeeker, w io.Writer, selectedPages []string, pb *model.P
 		return err
 	}
 
-	if conf.ValidationMode != model.ValidationNone {
-		if err = ValidateContext(ctx); err != nil {
-			return err
-		}
-	}
-
-	return WriteContext(ctx, w)
+	return Write(ctx, w, conf)
 }
 
 // AddBoxesFile adds page boundaries for selected pages of inFile and writes result to outFile.
@@ -164,12 +149,8 @@ func RemoveBoxes(rs io.ReadSeeker, w io.Writer, selectedPages []string, pb *mode
 	}
 	conf.Cmd = model.REMOVEBOXES
 
-	ctx, _, _, _, err := ReadValidateAndOptimize(rs, conf, time.Now())
+	ctx, err := ReadValidateAndOptimize(rs, conf)
 	if err != nil {
-		return err
-	}
-
-	if err := ctx.EnsurePageCount(); err != nil {
 		return err
 	}
 
@@ -182,13 +163,7 @@ func RemoveBoxes(rs io.ReadSeeker, w io.Writer, selectedPages []string, pb *mode
 		return err
 	}
 
-	if conf.ValidationMode != model.ValidationNone {
-		if err = ValidateContext(ctx); err != nil {
-			return err
-		}
-	}
-
-	return WriteContext(ctx, w)
+	return Write(ctx, w, conf)
 }
 
 // RemoveBoxesFile removes page boundaries as specified in pb for selected pages of inFile and writes result to outFile.
@@ -248,12 +223,8 @@ func Crop(rs io.ReadSeeker, w io.Writer, selectedPages []string, b *model.Box, c
 	}
 	conf.Cmd = model.CROP
 
-	ctx, _, _, _, err := ReadValidateAndOptimize(rs, conf, time.Now())
+	ctx, err := ReadValidateAndOptimize(rs, conf)
 	if err != nil {
-		return err
-	}
-
-	if err := ctx.EnsurePageCount(); err != nil {
 		return err
 	}
 
@@ -266,13 +237,7 @@ func Crop(rs io.ReadSeeker, w io.Writer, selectedPages []string, b *model.Box, c
 		return err
 	}
 
-	if conf.ValidationMode != model.ValidationNone {
-		if err = ValidateContext(ctx); err != nil {
-			return err
-		}
-	}
-
-	return WriteContext(ctx, w)
+	return Write(ctx, w, conf)
 }
 
 // CropFile adds crop boxes for selected pages of inFile and writes result to outFile.

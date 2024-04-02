@@ -70,9 +70,9 @@ func validateDestinationArray(xRefTable *model.XRefTable, a types.Array) error {
 	// NOTE if len == 4 we possible have a missing first element, which should be an indRef to the dest page.
 	// TODO Investigate.
 	i := 1
-	// if len(a) == 4 {
-	// 	i = 0
-	// }
+	if len(a) == 4 {
+		i = 0
+	}
 
 	// Validate rest of array elements.
 
@@ -86,14 +86,10 @@ func validateDestinationArray(xRefTable *model.XRefTable, a types.Array) error {
 	switch len(a) {
 
 	case 2:
-		if xRefTable.ValidationMode == model.ValidationRelaxed {
-			nameErr = !types.MemberOf(name.Value(), []string{"Fit", "FitB", "FitH"})
-		} else {
-			nameErr = !types.MemberOf(name.Value(), []string{"Fit", "FitB"})
-		}
+		nameErr = !types.MemberOf(name.Value(), []string{"Fit", "FitB", "FitH", "FitV", "FitBH", "FitBV"})
 
 	case 3:
-		nameErr = name.Value() != "FitH" && name.Value() != "FitV" && name.Value() != "FitBH"
+		nameErr = !types.MemberOf(name.Value(), []string{"FitH", "FitV", "FitBH", "FitBV"})
 
 	case 4:
 		// TODO Cleanup

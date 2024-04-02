@@ -24,6 +24,7 @@ import (
 	"time"
 
 	"github.com/pdfcpu/pdfcpu/pkg/font"
+	"github.com/pdfcpu/pdfcpu/pkg/log"
 	"github.com/pdfcpu/pdfcpu/pkg/pdfcpu/types"
 )
 
@@ -33,9 +34,6 @@ const (
 
 	// ValidationRelaxed ensures PDF compliance based on frequently encountered validation errors.
 	ValidationRelaxed
-
-	// ValidationNone bypasses validation.
-	ValidationNone
 )
 
 // See table 22 - User access permissions
@@ -153,6 +151,7 @@ const (
 	LISTVIEWERPREFERENCES
 	SETVIEWERPREFERENCES
 	RESETVIEWERPREFERENCES
+	ZOOM
 )
 
 // Configuration of a Context.
@@ -171,6 +170,9 @@ type Configuration struct {
 
 	// Validate against ISO-32000: strict or relaxed.
 	ValidationMode int
+
+	// Enable validation right before writing.
+	PostProcessValidate bool
 
 	// Check for broken links in LinkedAnnotations/URIActions.
 	ValidateLinks bool
@@ -225,6 +227,12 @@ type Configuration struct {
 	// Date format.
 	DateFormat string
 
+	// Optimize.
+	Optimize bool
+
+	// Optimize page resources via content stream analysis.
+	OptimizeResourceDicts bool
+
 	// Optimize duplicate content streams across pages.
 	OptimizeDuplicateContentStreams bool
 
@@ -248,8 +256,11 @@ var ConfigPath string = "default"
 
 var loadedDefaultConfig *Configuration
 
-//go:embed config.yml
+//go:embed resources/config.yml
 var configFileBytes []byte
+
+//go:embed resources/Roboto-Regular.ttf
+var robotoFontFileBytes []byte
 
 func ensureConfigFileAt(path string) error {
 	f, err := os.Open(path)
@@ -282,6 +293,25 @@ func EnsureDefaultConfigAt(path string) error {
 		return err
 	}
 	//fmt.Println(loadedDefaultConfig)
+
+	files, err := os.ReadDir(font.UserFontDir)
+	if err != nil {
+		return err
+	}
+
+	if len(files) == 0 {
+		// Ensure Roboto font for form filling.
+		fn := "Roboto-Regular"
+		if log.CLIEnabled() {
+			log.CLI.Printf("installing user font:")
+		}
+		if err := font.InstallFontFromBytes(font.UserFontDir, fn, robotoFontFileBytes); err != nil {
+			if log.CLIEnabled() {
+				log.CLI.Printf("%v", err)
+			}
+		}
+	}
+
 	return font.LoadUserFonts()
 }
 
@@ -305,6 +335,8 @@ func newDefaultConfiguration() *Configuration {
 		Permissions:                     PermissionsPrint,
 		TimestampFormat:                 "2006-01-02 15:04",
 		DateFormat:                      "2006-01-02",
+		Optimize:                        true,
+		OptimizeResourceDicts:           true,
 		OptimizeDuplicateContentStreams: false,
 		CreateBookmarks:                 true,
 		NeedAppearances:                 false,
@@ -359,20 +391,24 @@ func (c Configuration) String() string {
 		path = c.Path
 	}
 	return fmt.Sprintf("pdfcpu configuration:\n"+
-		"Path:              %s\n"+
-		"CheckFileNameExt:  %t\n"+
-		"Reader15:          %t\n"+
-		"DecodeAllStreams:  %t\n"+
-		"ValidationMode:    %s\n"+
-		"Eol:               %s\n"+
-		"WriteObjectStream: %t\n"+
-		"WriteXrefStream:   %t\n"+
-		"EncryptUsingAES:   %t\n"+
-		"EncryptKeyLength:  %d\n"+
-		"Permissions:       %d\n"+
-		"Unit :             %s\n"+
-		"TimestampFormat:	%s\n"+
-		"DateFormat:		%s\n"+
+		"Path:                %s\n"+
+		"CheckFileNameExt:    %t\n"+
+		"Reader15:            %t\n"+
+		"DecodeAllStreams:    %t\n"+
+		"ValidationMode:      %s\n"+
+		"PostProcessValidate: %t\n"+
+		"ValidateLinks:       %t\n"+
+		"Eol:                 %s\n"+
+		"WriteObjectStream:   %t\n"+
+		"WriteXrefStream:     %t\n"+
+		"EncryptUsingAES:     %t\n"+
+		"EncryptKeyLength:    %d\n"+
+		"Permissions:         %d\n"+
+		"Unit :               %s\n"+
+		"TimestampFormat:	  %s\n"+
+		"DateFormat:		  %s\n"+
+		"Optimize %t\n"+
+		"OptimizeResourceDicts %t\n"+
 		"OptimizeDuplicateContentStreams %t\n"+
 		"CreateBookmarks %t\n"+
 		"NeedAppearances %t\n",
@@ -381,6 +417,8 @@ func (c Configuration) String() string {
 		c.Reader15,
 		c.DecodeAllStreams,
 		c.ValidationModeString(),
+		c.PostProcessValidate,
+		c.ValidateLinks,
 		c.EolString(),
 		c.WriteObjectStream,
 		c.WriteXRefStream,
@@ -390,6 +428,8 @@ func (c Configuration) String() string {
 		c.UnitString(),
 		c.TimestampFormat,
 		c.DateFormat,
+		c.Optimize,
+		c.OptimizeResourceDicts,
 		c.OptimizeDuplicateContentStreams,
 		c.CreateBookmarks,
 		c.NeedAppearances,
@@ -415,10 +455,7 @@ func (c *Configuration) ValidationModeString() string {
 	if c.ValidationMode == ValidationStrict {
 		return "strict"
 	}
-	if c.ValidationMode == ValidationRelaxed {
-		return "relaxed"
-	}
-	return "none"
+	return "relaxed"
 }
 
 // UnitString returns a string rep for the display unit in effect.

@@ -19,9 +19,7 @@ package api
 import (
 	"io"
 	"os"
-	"time"
 
-	"github.com/pdfcpu/pdfcpu/pkg/pdfcpu"
 	"github.com/pdfcpu/pdfcpu/pkg/pdfcpu/model"
 	"github.com/pdfcpu/pdfcpu/pkg/pdfcpu/types"
 	"github.com/pkg/errors"
@@ -40,7 +38,7 @@ func PageMode(rs io.ReadSeeker, conf *model.Configuration) (*model.PageMode, err
 	}
 	conf.Cmd = model.LISTPAGEMODE
 
-	ctx, _, _, err := readAndValidate(rs, conf, time.Now())
+	ctx, err := ReadAndValidate(rs, conf)
 	if err != nil {
 		return nil, err
 	}
@@ -72,7 +70,7 @@ func ListPageMode(rs io.ReadSeeker, conf *model.Configuration) ([]string, error)
 	}
 	conf.Cmd = model.LISTPAGEMODE
 
-	ctx, _, _, err := readAndValidate(rs, conf, time.Now())
+	ctx, err := ReadAndValidate(rs, conf)
 	if err != nil {
 		return nil, err
 	}
@@ -108,22 +106,14 @@ func SetPageMode(rs io.ReadSeeker, w io.Writer, val model.PageMode, conf *model.
 	}
 	conf.Cmd = model.SETPAGEMODE
 
-	ctx, _, _, err := readAndValidate(rs, conf, time.Now())
+	ctx, err := ReadAndValidate(rs, conf)
 	if err != nil {
 		return err
 	}
 
-	if ctx.Version() == model.V20 {
-		return pdfcpu.ErrUnsupportedVersion
-	}
-
 	ctx.RootDict["PageMode"] = types.Name(val.String())
 
-	if err = WriteContext(ctx, w); err != nil {
-		return err
-	}
-
-	return nil
+	return Write(ctx, w, conf)
 }
 
 // SetPageModeFile sets inFile's page mode and writes the result to outFile.
@@ -177,22 +167,14 @@ func ResetPageMode(rs io.ReadSeeker, w io.Writer, conf *model.Configuration) err
 	}
 	conf.Cmd = model.RESETPAGEMODE
 
-	ctx, _, _, err := readAndValidate(rs, conf, time.Now())
+	ctx, err := ReadAndValidate(rs, conf)
 	if err != nil {
 		return err
 	}
 
-	if ctx.Version() == model.V20 {
-		return pdfcpu.ErrUnsupportedVersion
-	}
-
 	delete(ctx.RootDict, "PageMode")
 
-	if err = WriteContext(ctx, w); err != nil {
-		return err
-	}
-
-	return nil
+	return Write(ctx, w, conf)
 }
 
 // ResetPageModeFile resets inFile's page mode and writes the result to outFile.

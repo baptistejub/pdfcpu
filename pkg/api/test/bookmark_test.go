@@ -20,7 +20,6 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
-	"time"
 
 	"github.com/pdfcpu/pdfcpu/pkg/api"
 	"github.com/pdfcpu/pdfcpu/pkg/pdfcpu"
@@ -45,12 +44,11 @@ func listBookmarksFile(t *testing.T, fileName string, conf *model.Configuration)
 	if conf == nil {
 		conf = model.NewDefaultConfiguration()
 	} else {
-		// Validation loads infodict.
 		conf.ValidationMode = model.ValidationRelaxed
 	}
 	conf.Cmd = model.LISTBOOKMARKS
 
-	ctx, _, _, _, err := api.ReadValidateAndOptimize(f, conf, time.Now())
+	ctx, err := api.ReadValidateAndOptimize(f, conf)
 	if err != nil {
 		t.Fatalf("%s ReadValidateAndOptimize: %v\n", msg, err)
 	}

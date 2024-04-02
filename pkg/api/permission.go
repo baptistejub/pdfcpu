@@ -19,8 +19,8 @@ package api
 import (
 	"io"
 	"os"
-	"time"
 
+	"github.com/pdfcpu/pdfcpu/pkg/pdfcpu"
 	"github.com/pdfcpu/pdfcpu/pkg/pdfcpu/model"
 	"github.com/pkg/errors"
 )
@@ -36,7 +36,7 @@ func Permissions(rs io.ReadSeeker, conf *model.Configuration) (int, error) {
 	}
 	conf.Cmd = model.LISTPERMISSIONS
 
-	ctx, _, _, _, err := ReadValidateAndOptimize(rs, conf, time.Now())
+	ctx, err := ReadValidateAndOptimize(rs, conf)
 	if err != nil {
 		return 0, err
 	}
@@ -62,22 +62,16 @@ func SetPermissions(rs io.ReadSeeker, w io.Writer, conf *model.Configuration) er
 	}
 	conf.Cmd = model.SETPERMISSIONS
 
-	fromStart := time.Now()
-	ctx, durRead, durVal, durOpt, err := ReadValidateAndOptimize(rs, conf, fromStart)
+	ctx, err := ReadValidateAndOptimize(rs, conf)
 	if err != nil {
 		return err
 	}
 
-	fromWrite := time.Now()
-	if err = WriteContext(ctx, w); err != nil {
-		return err
+	if ctx.Version() == model.V20 {
+		return pdfcpu.ErrUnsupportedVersion
 	}
 
-	durWrite := time.Since(fromWrite).Seconds()
-	durTotal := time.Since(fromStart).Seconds()
-	logOperationStats(ctx, "write", durRead, durVal, durOpt, durWrite, durTotal)
-
-	return nil
+	return WriteContext(ctx, w)
 }
 
 // SetPermissionsFile sets inFile's user access permissions.
@@ -137,15 +131,21 @@ func GetPermissions(rs io.ReadSeeker, conf *model.Configuration) (*int16, error)
 	}
 	// No cmd available.
 
-	ctx, _, _, err := readAndValidate(rs, conf, time.Now())
+	ctx, err := ReadAndValidate(rs, conf)
 	if err != nil {
 		return nil, err
 	}
+
+	if ctx.Version() == model.V20 {
+		return nil, pdfcpu.ErrUnsupportedVersion
+	}
+
 	if ctx.E == nil {
 		// Full access - permissions don't apply.
 		return nil, nil
 	}
 	p := int16(ctx.E.P)
+
 	return &p, nil
 }
 

@@ -19,7 +19,6 @@ package api
 import (
 	"io"
 	"os"
-	"time"
 
 	"github.com/pdfcpu/pdfcpu/pkg/log"
 	"github.com/pdfcpu/pdfcpu/pkg/pdfcpu"
@@ -27,7 +26,7 @@ import (
 	"github.com/pkg/errors"
 )
 
-// ResizeFile applies resizeConf for selected pages of rs and writes result to w.
+// Resize applies resizeConf for selected pages of rs and writes result to w.
 func Resize(rs io.ReadSeeker, w io.Writer, selectedPages []string, resize *model.Resize, conf *model.Configuration) error {
 	if rs == nil {
 		return errors.New("pdfcpu: Resize: missing rs")
@@ -38,12 +37,8 @@ func Resize(rs io.ReadSeeker, w io.Writer, selectedPages []string, resize *model
 	}
 	conf.Cmd = model.RESIZE
 
-	ctx, _, _, _, err := ReadValidateAndOptimize(rs, conf, time.Now())
+	ctx, err := ReadValidateAndOptimize(rs, conf)
 	if err != nil {
-		return err
-	}
-
-	if err := ctx.EnsurePageCount(); err != nil {
 		return err
 	}
 
@@ -56,13 +51,7 @@ func Resize(rs io.ReadSeeker, w io.Writer, selectedPages []string, resize *model
 		return err
 	}
 
-	if conf.ValidationMode != model.ValidationNone {
-		if err = ValidateContext(ctx); err != nil {
-			return err
-		}
-	}
-
-	return WriteContext(ctx, w)
+	return Write(ctx, w, conf)
 }
 
 // ResizeFile applies resizeConf for selected pages of inFile and writes result to outFile.

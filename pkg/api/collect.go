@@ -19,7 +19,6 @@ package api
 import (
 	"io"
 	"os"
-	"time"
 
 	"github.com/pdfcpu/pdfcpu/pkg/pdfcpu"
 	"github.com/pdfcpu/pdfcpu/pkg/pdfcpu/model"
@@ -37,13 +36,8 @@ func Collect(rs io.ReadSeeker, w io.Writer, selectedPages []string, conf *model.
 	}
 	conf.Cmd = model.COLLECT
 
-	fromStart := time.Now()
-	ctx, _, _, _, err := ReadValidateAndOptimize(rs, conf, fromStart)
+	ctx, err := ReadValidateAndOptimize(rs, conf)
 	if err != nil {
-		return err
-	}
-
-	if err := ctx.EnsurePageCount(); err != nil {
 		return err
 	}
 
@@ -57,13 +51,7 @@ func Collect(rs io.ReadSeeker, w io.Writer, selectedPages []string, conf *model.
 		return err
 	}
 
-	if conf.ValidationMode != model.ValidationNone {
-		if err = ValidateContext(ctxDest); err != nil {
-			return err
-		}
-	}
-
-	return WriteContext(ctxDest, w)
+	return Write(ctxDest, w, conf)
 }
 
 // CollectFile creates a custom PDF page sequence for inFile and writes the result to outFile.

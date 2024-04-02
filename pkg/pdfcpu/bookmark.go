@@ -186,7 +186,16 @@ func BookmarksForOutlineItem(ctx *model.Context, item *types.IndirectRef, parent
 			return nil, err
 		}
 
-		s, _ := model.Text(d["Title"])
+		obj, err := ctx.Dereference(d["Title"])
+		if err != nil {
+			return nil, err
+		}
+
+		s, err := model.Text(obj)
+		if err != nil {
+			return nil, err
+		}
+
 		title := outlineItemTitle(s)
 
 		// Retrieve page number out of a destination via "Dest" or "Goto Action".
@@ -204,7 +213,7 @@ func BookmarksForOutlineItem(ctx *model.Context, item *types.IndirectRef, parent
 			dest = act.(types.Dict)["D"]
 		}
 
-		obj, err := ctx.Dereference(dest)
+		obj, err = ctx.Dereference(dest)
 		if err != nil {
 			return nil, err
 		}
@@ -589,7 +598,7 @@ func addBookmarkTree(ctx *model.Context, bmTree *BookmarkTree, replace bool) err
 	return AddBookmarks(ctx, bmTree.Bookmarks, replace)
 }
 
-func parseBookmarksFromJSON(ctx *model.Context, bb []byte) (*BookmarkTree, error) {
+func parseBookmarksFromJSON(bb []byte) (*BookmarkTree, error) {
 
 	if !json.Valid(bb) {
 		return nil, errors.Errorf("pdfcpu: invalid JSON encoding detected.")
@@ -612,7 +621,7 @@ func ImportBookmarks(ctx *model.Context, rd io.Reader, replace bool) (bool, erro
 		return false, err
 	}
 
-	bmTree, err := parseBookmarksFromJSON(ctx, buf.Bytes())
+	bmTree, err := parseBookmarksFromJSON(buf.Bytes())
 	if err != nil {
 		return false, err
 	}

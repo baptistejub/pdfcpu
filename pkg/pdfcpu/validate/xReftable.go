@@ -31,6 +31,17 @@ import (
 	"github.com/pkg/errors"
 )
 
+func reportSpecViolation(xRefTable *model.XRefTable, err error) {
+	// TODO Apply across code base.
+	pre := fmt.Sprintf("digesting spec violation around obj#(%d)", xRefTable.CurObj)
+	if log.ValidateEnabled() {
+		log.CLI.Printf("%s: %v\n", pre, err)
+	}
+	if log.CLIEnabled() {
+		log.Validate.Printf("%s: %v\n", pre, err)
+	}
+}
+
 // XRefTable validates a PDF cross reference table obeying the validation mode.
 func XRefTable(xRefTable *model.XRefTable) error {
 	if log.InfoEnabled() {
@@ -136,6 +147,11 @@ func validateNames(xRefTable *model.XRefTable, rootDict types.Dict, required boo
 			continue
 		}
 
+		if xRefTable.Names[treeName] != nil {
+			// Already internalized.
+			continue
+		}
+
 		d, err := xRefTable.DereferenceDict(value)
 		if err != nil {
 			return err
@@ -149,10 +165,8 @@ func validateNames(xRefTable *model.XRefTable, rootDict types.Dict, required boo
 			return err
 		}
 
-		// Internalize this name tree.
-		// If no validation takes place, name trees have to be internalized via xRefTable.LocateNameTree
-		// TODO Move this out of validation into Read.
 		if tree != nil {
+			// Internalize.
 			xRefTable.Names[treeName] = tree
 		}
 
@@ -205,17 +219,15 @@ func validatePageLayout(xRefTable *model.XRefTable, rootDict types.Dict, require
 }
 
 func pageModeValidator(v model.Version) func(s string) bool {
-	modes := []string{"UseNone", "UseOutlines", "UseThumbs", "FullScreen"}
+	// "None" is out of spec - but no need to repair.
+	modes := []string{"UseNone", "UseOutlines", "UseThumbs", "FullScreen", "None"}
 	if v >= model.V15 {
 		modes = append(modes, "UseOC")
 	}
 	if v >= model.V16 {
 		modes = append(modes, "UseAttachments")
 	}
-	validate := func(s string) bool {
-		return types.MemberOf(s, modes)
-	}
-	return validate
+	return func(s string) bool { return types.MemberOf(s, modes) }
 }
 
 func validatePageMode(xRefTable *model.XRefTable, rootDict types.Dict, required bool, sinceVersion model.Version) error {
@@ -302,7 +314,7 @@ func validateMarkInfo(xRefTable *model.XRefTable, rootDict types.Dict, required 
 	// Suspects: optional, since V1.6, boolean
 	sinceVersion = model.V16
 	if xRefTable.ValidationMode == model.ValidationRelaxed {
-		sinceVersion = model.V15
+		sinceVersion = model.V14
 	}
 	suspects, err := validateBooleanEntry(xRefTable, d, dictName, "Suspects", OPTIONAL, sinceVersion, nil)
 	if err != nil {
@@ -862,6 +874,10 @@ func validateRootObject(xRefTable *model.XRefTable) error {
 	// Requirements         y   1.7         array           => 12.10 Document Requirements
 	// Collection           y   1.7         dict            => 12.3.5 Collections
 	// NeedsRendering       y   1.7         boolean         => XML Forms Architecture (XFA) Spec.
+
+	// DSS					y	2.0			dict			=> 12.8.4.3 Document Security Store	TODO
+	// AF					y	2.0			array of dicts	=> 14.3 Associated Files			TODO
+	// DPartRoot			y	2.0			dict			=> 14.12 Document parts				TODO
 
 	d, err := xRefTable.Catalog()
 	if err != nil {

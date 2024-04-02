@@ -39,8 +39,6 @@ import (
 	"github.com/pkg/errors"
 )
 
-var errInvalidBookletID = errors.New("pdfcpu: booklet: n: one of 2, 4")
-
 func hasPDFExtension(filename string) bool {
 	return strings.HasSuffix(strings.ToLower(filename), ".pdf")
 }
@@ -132,6 +130,9 @@ func printVersion(conf *model.Configuration) {
 			for _, setting := range info.Settings {
 				if setting.Key == "vcs.revision" {
 					commit = setting.Value
+					if len(commit) >= 8 {
+						commit = commit[:8]
+					}
 				}
 				if setting.Key == "vcs.time" {
 					date = setting.Value
@@ -140,7 +141,7 @@ func printVersion(conf *model.Configuration) {
 		}
 	}
 
-	fmt.Fprintf(os.Stdout, "commit: %s (%s)\n", commit[:8], date)
+	fmt.Fprintf(os.Stdout, "commit: %s (%s)\n", commit, date)
 	fmt.Fprintf(os.Stdout, "base  : %s\n", runtime.Version())
 	fmt.Fprintf(os.Stdout, "config: %s\n", conf.Path)
 }
@@ -1198,34 +1199,51 @@ func processRotateCommand(conf *model.Configuration) {
 	process(cli.RotateCommand(inFile, outFile, rotation, selectedPages, conf))
 }
 
-func parseAfterNUpDetails(nup *model.NUp, argInd int, filenameOut string) []string {
+func parseForGrid(nup *model.NUp, argInd *int) {
+	cols, err := strconv.Atoi(flag.Arg(*argInd))
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "%s\n", err)
+		os.Exit(1)
+	}
+	rows, err := strconv.Atoi(flag.Arg(*argInd + 1))
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "%s\n", err)
+		os.Exit(1)
+	}
+	if err = pdfcpu.ParseNUpGridDefinition(cols, rows, nup); err != nil {
+		fmt.Fprintf(os.Stderr, "%s\n", err)
+		os.Exit(1)
+	}
+	*argInd += 2
+}
+
+func parseForNUp(nup *model.NUp, argInd *int, nUpValues []int) {
+	n, err := strconv.Atoi(flag.Arg(*argInd))
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "%s\n", err)
+		os.Exit(1)
+	}
+	if !types.IntMemberOf(n, nUpValues) {
+		ss := make([]string, len(nUpValues))
+		for i, v := range nUpValues {
+			ss[i] = strconv.Itoa(v)
+		}
+		err := errors.Errorf("pdfcpu: n must be one of %s", strings.Join(ss, ", "))
+		fmt.Fprintf(os.Stderr, "%s\n", err)
+		os.Exit(1)
+	}
+	if err = pdfcpu.ParseNUpValue(n, nup); err != nil {
+		fmt.Fprintf(os.Stderr, "%s\n", err)
+		os.Exit(1)
+	}
+	*argInd++
+}
+
+func parseAfterNUpDetails(nup *model.NUp, argInd int, nUpValues []int, filenameOut string) []string {
 	if nup.PageGrid {
-		cols, err := strconv.Atoi(flag.Arg(argInd))
-		if err != nil {
-			fmt.Fprintf(os.Stderr, "%s\n", err)
-			os.Exit(1)
-		}
-		rows, err := strconv.Atoi(flag.Arg(argInd + 1))
-		if err != nil {
-			fmt.Fprintf(os.Stderr, "%s\n", err)
-			os.Exit(1)
-		}
-		if err = pdfcpu.ParseNUpGridDefinition(cols, rows, nup); err != nil {
-			fmt.Fprintf(os.Stderr, "%s\n", err)
-			os.Exit(1)
-		}
-		argInd += 2
+		parseForGrid(nup, &argInd)
 	} else {
-		n, err := strconv.Atoi(flag.Arg(argInd))
-		if err != nil {
-			fmt.Fprintf(os.Stderr, "%s\n", err)
-			os.Exit(1)
-		}
-		if err = pdfcpu.ParseNUpValue(n, nup); err != nil {
-			fmt.Fprintf(os.Stderr, "%s\n", err)
-			os.Exit(1)
-		}
-		argInd++
+		parseForNUp(nup, &argInd, nUpValues)
 	}
 
 	filenameIn := flag.Arg(argInd)
@@ -1294,7 +1312,7 @@ func processNUpCommand(conf *model.Configuration) {
 	// pdfcpu nup outFile n inFile|imageFiles...
 	// If no optional 'description' argument provided use default nup configuration.
 
-	inFiles := parseAfterNUpDetails(nup, argInd, outFile)
+	inFiles := parseAfterNUpDetails(nup, argInd, pdfcpu.NUpValues, outFile)
 	process(cli.NUpCommand(inFiles, outFile, pages, nup, conf))
 }
 
@@ -1332,7 +1350,7 @@ func processGridCommand(conf *model.Configuration) {
 	// pdfcpu grid outFile m n inFile|imageFiles...
 	// If no optional 'description' argument provided use default nup configuration.
 
-	inFiles := parseAfterNUpDetails(nup, argInd, outFile)
+	inFiles := parseAfterNUpDetails(nup, argInd, nil, outFile)
 	process(cli.NUpCommand(inFiles, outFile, pages, nup, conf))
 }
 
@@ -1370,12 +1388,7 @@ func processBookletCommand(conf *model.Configuration) {
 	// pdfcpu booklet outFile n inFile|imageFiles...
 	// If no optional 'description' argument provided use default nup configuration.
 
-	inFiles := parseAfterNUpDetails(nup, argInd, outFile)
-	n := nup.Grid.Width * nup.Grid.Height
-	if n != 2 && n != 4 {
-		fmt.Fprintf(os.Stderr, "%s\n", errInvalidBookletID)
-		os.Exit(1)
-	}
+	inFiles := parseAfterNUpDetails(nup, argInd, pdfcpu.NUpValuesForBooklets, outFile)
 	process(cli.BookletCommand(inFiles, outFile, pages, nup, conf))
 }
 
@@ -2552,4 +2565,38 @@ func processResetViewerPreferencesCommand(conf *model.Configuration) {
 		ensurePDFExtension(inFile)
 	}
 	process(cli.ResetViewerPreferencesCommand(inFile, "", conf))
+}
+
+func processZoomCommand(conf *model.Configuration) {
+	if len(flag.Args()) < 2 || len(flag.Args()) > 3 {
+		fmt.Fprintf(os.Stderr, "%s\n", usageZoom)
+		os.Exit(1)
+	}
+
+	processDiplayUnit(conf)
+
+	zc, err := pdfcpu.ParseZoomConfig(flag.Arg(0), conf.Unit)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "%v\n", err)
+		os.Exit(1)
+	}
+
+	inFile := flag.Arg(1)
+	if conf.CheckFileNameExt {
+		ensurePDFExtension(inFile)
+	}
+
+	outFile := ""
+	if len(flag.Args()) == 3 {
+		outFile = flag.Arg(2)
+		ensurePDFExtension(outFile)
+	}
+
+	selectedPages, err := api.ParsePageSelection(selectedPages)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "problem with flag selectedPages: %v\n", err)
+		os.Exit(1)
+	}
+
+	process(cli.ZoomCommand(inFile, outFile, selectedPages, zc, conf))
 }

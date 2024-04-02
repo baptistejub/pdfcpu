@@ -18,7 +18,6 @@ package api
 
 import (
 	"io"
-	"time"
 
 	"github.com/pdfcpu/pdfcpu/pkg/pdfcpu"
 	"github.com/pdfcpu/pdfcpu/pkg/pdfcpu/model"
@@ -36,12 +35,8 @@ func Images(rs io.ReadSeeker, selectedPages []string, conf *model.Configuration)
 	}
 	conf.Cmd = model.LISTIMAGES
 
-	ctx, _, _, _, err := ReadValidateAndOptimize(rs, conf, time.Now())
+	ctx, err := ReadValidateAndOptimize(rs, conf)
 	if err != nil {
-		return nil, err
-	}
-
-	if err := ctx.EnsurePageCount(); err != nil {
 		return nil, err
 	}
 

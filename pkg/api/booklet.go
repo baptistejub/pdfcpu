@@ -19,7 +19,6 @@ package api
 import (
 	"io"
 	"os"
-	"time"
 
 	"github.com/pdfcpu/pdfcpu/pkg/log"
 	"github.com/pdfcpu/pdfcpu/pkg/pdfcpu"
@@ -84,15 +83,7 @@ func Booklet(rs io.ReadSeeker, w io.Writer, imgFiles, selectedPages []string, nu
 
 	} else {
 
-		if ctx, _, _, err = readAndValidate(rs, conf, time.Now()); err != nil {
-			return err
-		}
-
-		if ctx.Version() == model.V20 {
-			return pdfcpu.ErrUnsupportedVersion
-		}
-
-		if err := ctx.EnsurePageCount(); err != nil {
+		if ctx, err = ReadAndValidate(rs, conf); err != nil {
 			return err
 		}
 
@@ -106,19 +97,7 @@ func Booklet(rs io.ReadSeeker, w io.Writer, imgFiles, selectedPages []string, nu
 		}
 	}
 
-	if conf.ValidationMode != model.ValidationNone {
-		if err = ValidateContext(ctx); err != nil {
-			return err
-		}
-	}
-
-	if err = WriteContext(ctx, w); err != nil {
-		return err
-	}
-
-	log.Stats.Printf("XRefTable:\n%s\n", ctx)
-
-	return nil
+	return Write(ctx, w, conf)
 }
 
 // BookletFile rearranges PDF pages or images into a booklet layout and writes the result to outFile.
