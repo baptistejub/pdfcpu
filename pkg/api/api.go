@@ -151,10 +151,8 @@ func ReadValidateAndOptimize(rs io.ReadSeeker, conf *model.Configuration, from1 
 	}
 
 	from3 := time.Now()
-	if !conf.DisableOptimize {
-		if err = OptimizeContext(ctx); err != nil {
-			return nil, 0, 0, 0, err
-		}
+	if err = OptimizeContext(ctx); err != nil {
+		return nil, 0, 0, 0, err
 	}
 
 	dur3 = time.Since(from3).Seconds()
