@@ -1081,6 +1081,7 @@ func processImportImagesCommand(conf *model.Configuration) {
 		imp := pdfcpu.DefaultImportConfig()
 		imageFileNames := parseArgsForImageFileNames(1)
 		process(cli.ImportImagesCommand(imageFileNames, outFile, imp, conf))
+		return
 	}
 
 	// pdfcpu import description outFile imageFile...
