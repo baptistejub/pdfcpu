@@ -112,6 +112,9 @@ func ValidateContext(ctx *model.Context) error {
 
 // OptimizeContext optimizes ctx.
 func OptimizeContext(ctx *model.Context) error {
+	// disable optimization
+	return nil
+
 	if log.CLIEnabled() {
 		log.CLI.Println("optimizing...")
 	}
