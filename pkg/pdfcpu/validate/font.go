@@ -38,7 +38,8 @@ func validateStandardType1Font(s string) bool {
 }
 
 func validateFontFile3SubType(sd *types.StreamDict, fontType string, relaxed bool) error {
-
+	// CUSTOM: Skipping validation
+	return nil
 	// Hint about used font program.
 	dictSubType := sd.Subtype()
 

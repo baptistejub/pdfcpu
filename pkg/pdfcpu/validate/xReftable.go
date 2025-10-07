@@ -293,9 +293,10 @@ func validateNamedDestinations(xRefTable *model.XRefTable, rootDict types.Dict, 
 func pageLayoutValidator(v model.Version) func(s string) bool {
 	// "UseNone" is out of spec.
 	layouts := []string{"SinglePage", "OneColumn", "TwoColumnLeft", "TwoColumnRight", "UseNone"}
-	if v >= model.V15 {
-		layouts = append(layouts, "TwoPageLeft", "TwoPageRight")
-	}
+	// CUSTOM: Skipping validation
+	//if v >= model.V15 {
+	layouts = append(layouts, "TwoPageLeft", "TwoPageRight")
+	//}
 	validate := func(s string) bool {
 		return types.MemberOf(s, layouts)
 	}
@@ -318,12 +319,14 @@ func validatePageLayout(xRefTable *model.XRefTable, rootDict types.Dict, require
 func pageModeValidator(v model.Version) func(s string) bool {
 	// "None" and "none" are out of spec.
 	modes := []string{"UseNone", "UseOutlines", "UseThumbs", "FullScreen", "None", "none"}
-	if v >= model.V14 {
-		modes = append(modes, "UseOC")
-	}
-	if v >= model.V16 {
-		modes = append(modes, "UseAttachments")
-	}
+	// CUSTOM: Skipping validation
+	//if v >= model.V14 {
+	modes = append(modes, "UseOC")
+	//}
+	// CUSTOM: Skipping validation
+	//if v >= model.V16 {
+	modes = append(modes, "UseAttachments")
+	//}
 	return func(s string) bool { return types.MemberOf(s, modes) }
 }
 
